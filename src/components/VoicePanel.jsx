@@ -13,6 +13,7 @@ const EXAMPLES = [
   'press key five',
   'enter pin 123456',
   'draw a triangle',
+  'draw a circle',
   'press keys 1 3 5',
   'move to safe zone',
   'home',

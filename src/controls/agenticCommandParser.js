@@ -68,32 +68,51 @@ export function normalizeAgenticCommand(rawCmd) {
  */
 export function simulateLocalAgenticResponse(transcript, currentEE) {
   const norm = (transcript || '').toLowerCase().trim();
-  const x = currentEE?.x ?? 0.55;
-  const y = currentEE?.y ?? 0.0;
-  const z = currentEE?.z ?? 0.10;
+
+  // Define a guaranteed reachable safe start zone for complex path shapes
+  // This avoids physical extension limits when drawing starting from fully stretched home position.
+  const safeStart = { x: 0.50, y: 0.00, z: 0.25 };
 
   // Case A: Draw a triangle
   if (norm.includes('draw a triangle') || norm.includes('make a triangle')) {
     return [
-      { type: 'moveTo', target: { x, y, z: z + 0.10 } },
-      { type: 'moveTo', target: { x: x + 0.10, y: y + 0.05, z: z + 0.10 } },
-      { type: 'moveTo', target: { x: x - 0.10, y: y + 0.05, z: z + 0.10 } },
-      { type: 'moveTo', target: { x, y, z: z + 0.10 } }
+      { type: 'moveTo', target: { x: 0.45, y: -0.10, z: 0.25 } },
+      { type: 'moveTo', target: { x: 0.55, y: 0.00, z: 0.35 } },
+      { type: 'moveTo', target: { x: 0.45, y: 0.10, z: 0.25 } },
+      { type: 'moveTo', target: { x: 0.45, y: -0.10, z: 0.25 } }
     ];
   }
 
   // Case B: Draw a square
   if (norm.includes('draw a square') || norm.includes('draw a box') || norm.includes('square path')) {
     return [
-      { type: 'moveTo', target: { x: x - 0.05, y: y - 0.05, z: z + 0.05 } },
-      { type: 'moveTo', target: { x: x + 0.05, y: y - 0.05, z: z + 0.05 } },
-      { type: 'moveTo', target: { x: x + 0.05, y: y + 0.05, z: z + 0.05 } },
-      { type: 'moveTo', target: { x: x - 0.05, y: y + 0.05, z: z + 0.05 } },
-      { type: 'moveTo', target: { x: x - 0.05, y: y - 0.05, z: z + 0.05 } }
+      { type: 'moveTo', target: { x: 0.45, y: -0.10, z: 0.25 } },
+      { type: 'moveTo', target: { x: 0.55, y: -0.10, z: 0.25 } },
+      { type: 'moveTo', target: { x: 0.55, y: 0.10, z: 0.25 } },
+      { type: 'moveTo', target: { x: 0.45, y: 0.10, z: 0.25 } },
+      { type: 'moveTo', target: { x: 0.45, y: -0.10, z: 0.25 } }
     ];
   }
 
-  // Case C: Hover over key sequence
+  // Case C: Draw a circle
+  if (norm.includes('draw a circle') || norm.includes('make a circle') || norm.includes('circle path')) {
+    const r = 0.08; // 8cm radius
+    const points = [];
+    for (let i = 0; i <= 8; i++) {
+      const angle = (i * 2 * Math.PI) / 8;
+      points.push({
+        type: 'moveTo',
+        target: {
+          x: safeStart.x + r * Math.cos(angle),
+          y: safeStart.y + r * Math.sin(angle),
+          z: safeStart.z
+        }
+      });
+    }
+    return points;
+  }
+
+  // Case D: Hover over key sequence
   // e.g. "press keys 1 3 5" or "press key 2 then 4"
   const digitRegex = /\b(press|tap|keys)\s+([1-6\s,thenand]+)\b/;
   const match = norm.match(digitRegex);
@@ -104,7 +123,7 @@ export function simulateLocalAgenticResponse(transcript, currentEE) {
     }
   }
 
-  // Case D: Return to safe default zone
+  // Case E: Return to safe default zone
   if (norm.includes('safe zone') || norm.includes('safe position') || norm.includes('clearance')) {
     return [
       { type: 'moveTo', target: { x: 0.55, y: 0.0, z: 0.30 } }
@@ -148,6 +167,7 @@ CRITICAL INSTRUCTIONS:
 - You must output valid JSON containing a single root key "commands", which contains an array of commands.
 - Do NOT output any markdown code blocks, backticks, or explanatory text before or after the JSON. Return only the raw JSON.
 - Every coordinate target you generate MUST lie within the workspace limits. If a target is outside, discard it or clamp it.
+- REACHABLE SAFE ZONE FOR DRAWING SHAPES: If drawing shapes (like triangles, squares, circles, etc.), generate targets centered around a safe reachable zone: X: [0.45, 0.58], Y: [-0.15, 0.15], Z: [0.20, 0.35]. Do not try to draw shapes at the outer reach of the arm (e.g. at the home position limits where X is near 0.7+), otherwise the inverse kinematics solver will fail to converge!
 - If the operator's request is physically impossible or violates safety limits, return an empty commands array and add an "error" message field.
 `;
 }
