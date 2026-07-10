@@ -77,17 +77,18 @@ Every input adapter builds a `command` of the form:
 
 ---
 
-## Current Progress — Phase C (IK Motion & Key Press)
+## Current Progress — Phase E (Voice Control)
 
-All Phase C features are fully integrated, providing unified motion control and key-press automation:
+All Phase E features are fully integrated, providing unified motion control, key-press automation, autonomous PIN entry, and voice control via Web Speech API:
 
 - **Dashboard Layout**: Rich 6-DOF controls and visualizer with live joint updates, safety panel integration, and chronological Status Log.
 - **Inverse Kinematics (IK) & Trajectories**: Features a high-performance, Jacobian-free numerical gradient descent solver running at 60Hz. It accurately resolves Cartesian coordinates to joint states within a 5mm tolerance, smoothly animated by ease-in-out cubic trajectories.
-- **Autonomous key tapping**: The newly added **Press Key** panel supports direct triggers for Keys 1-6. Clicking a key initiates a multi-stage approach (hover 5cm above), touch (descend to surface), contact flash, and retreat sequence.
-- **Sequential PIN Entry**: The **Pin Entry** panel executes sequential key pressing routines for 6-digit PIN strings.
-- **Advanced Status Log & Safety**: Displays live IK solve status, absolute Cartesian distance error (in millimeters), active command source tracking, and error-highlighted logging.
+- **Autonomous key tapping**: The **Press Key** panel supports direct triggers for Keys 1-6. Clicking a key initiates a multi-stage approach (hover 5cm above), touch (descend to surface), contact flash, and retreat sequence.
+- **Sequential PIN Entry**: The **Autonomous PIN** panel executes sequential key pressing routines for 6-digit PIN strings consisting of digits 1-6. Includes live progress tracking, per-key error distance visualization, and mid-sequence emergency stop.
+- **Advanced Visual Feedback**: In the 3D scene, target markers dynamically change color per movement phase (Cyan=approach, Gold=touch, Green=retreat) with an active trajectory line tracking the end-effector path. Keys highlight when active and persist a green glow when successfully pressed.
+- **Voice Control (Deterministic)**: The **Voice** panel connects directly to the browser's Web Speech API (where supported) to listen to operator commands like "move up", "press key five", "rotate base 30 degrees", and "enter pin 123456". It parses commands strictly via a deterministic engine and provides text-to-speech (TTS) feedback. A typed fallback is provided as a primary backup for unsupported browsers.
 
-### Controls Reference (Phase C)
+### Controls Reference (Phase E)
 
 | Source        | UI                          | Adapter / dispatch                             | Pipeline command |
 | ------------- | --------------------------- | ---------------------------------------------- | ---------------- |
@@ -95,25 +96,26 @@ All Phase C features are fully integrated, providing unified motion control and 
 | Joystick      | `JoystickPanel` buttons     | `createJoystickAdapter`                        | `jog` / `home` / `stop` |
 | Move To       | `TargetInputPanel` form     | inline `executeCommand`                        | `moveTo`         |
 | Keyboard      | window listener             | `createKeyboardAdapter` (W/A/D + Q/E + H/Space)| `jog` / `home` / `stop` |
-| Voice (typed) | `VoicePanel` textbox/chips  | `parseVoiceCommand` → `executeCommand`         | `jog` / `pressKey` / `runPin` / `home` / `stop` / `halt` / `resetSafety` |
-| Autonomous PIN| `PinEntryPanel`             | inline `executeCommand`                        | `runPin`         |
+| Voice (Mic)   | `VoicePanel` mic / text     | `parseAndExecuteVoiceCommand`                  | *various*        |
+| Autonomous PIN| `PinEntryPanel` presets     | inline `executeCommand`                        | `runPin` / `stop` |
 | Safety        | `SafetyPanel` buttons       | inline `executeCommand`                        | `halt` / `resetSafety` |
 
 ---
 
-## Demo Instructions (Phase C)
+## Demo Instructions (Phase E)
 
-To perform the Phase C judging demo:
+To perform the Phase E judging demo:
 1. Run `npm run dev` and open the app.
 2. Verify the 3D scene renders the robotic arm and the 6-key panel.
-3. Click the **Home** button to return the arm to the home position.
-4. Try moving the arm to an absolute target:
-   - In the **Move To** panel, set X: `0.35`, Y: `0.1`, Z: `0.20` and click **Move To**.
-   - Observe the arm smoothly move to the target position, and the safety panel show `IK Status: Solved (err: ~0.000m)`.
-5. Click **5** in the **Press Key** panel:
-   - Observe the stylus hover above Key 5, descend to touch, trigger a contact flash on Key 5, and retreat.
-   - Verify the touch precision in the Safety panel: `Last Key Press: Key [5] — OK (0.2mm)` or equivalent.
-6. Try a sequential PIN run:
-   - Enter `123456` in the **Autonomous PIN** input and click **Execute PIN**.
-   - Click **Stop** in the joystick panel to interrupt the sequence at any time.
+3. Use **Voice Control**:
+   - If your browser supports it (e.g. Chrome), click **Start Listening** in the Voice panel and allow microphone permissions.
+   - Say "move up". The arm should jog upwards.
+   - Say "press key five". Watch the multi-stage touch sequence.
+   - Say "rotate base 30 degrees". Observe the arm rotate at the base.
+   - If speech recognition fails or is unsupported, type these exact commands into the Voice panel text box and press Enter (or click Run).
+4. Run the Autonomous PIN sequence via voice:
+   - Say or type "enter pin 123456".
+   - Observe the trajectory line and phase-colored markers tracing the entire entry path.
+5. Review the **Status Log**:
+   - Observe how voice inputs are logged, parsed, and executed natively via the single `executeCommand` pipeline, inheriting all safety validators.
 

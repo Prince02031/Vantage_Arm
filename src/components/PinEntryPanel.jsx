@@ -119,6 +119,12 @@ export default function PinEntryPanel() {
         ))}
       </div>
 
+      <div className="pin-presets" style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+        <button type="button" className="btn btn-sm btn-secondary" onClick={() => setPin('123456')} disabled={running}>123456</button>
+        <button type="button" className="btn btn-sm btn-secondary" onClick={() => setPin('654321')} disabled={running}>654321</button>
+        <button type="button" className="btn btn-sm btn-secondary" onClick={() => setPin('555555')} disabled={running}>555555</button>
+      </div>
+
       <div className="pin-actions">
         <button type="button" className="btn btn-secondary" onClick={backspace} disabled={running}>Backspace</button>
         <button type="button" className="btn btn-secondary" onClick={clear}      disabled={running}>Clear</button>

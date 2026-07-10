@@ -23,17 +23,17 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="dashboard-phase">
-          <span className="phase-tag">Phase C · IK Motion &amp; Key Press</span>
+          <span className="phase-tag">Phase E · Voice Control</span>
         </div>
       </header>
 
       <main className="dashboard-grid">
         <section className="dashboard-scene" aria-label="Robot scene">
           <ThreeScene />
-          <KeyPanel />
         </section>
 
         <aside className="dashboard-controls" aria-label="Controls panel">
+          <KeyPanel />
           <JointPanel />
           <SafetyPanel />
           <KeyPressPanel />

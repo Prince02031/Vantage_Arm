@@ -10,7 +10,7 @@ function deriveSystemState(safety, motion) {
 }
 
 export default function SafetyPanel() {
-  const { safety, motion, lastKeyPressResult } = useRobotStore();
+  const { safety, motion, lastKeyPressResult, activeCommand } = useRobotStore();
   const sys = deriveSystemState(safety, motion);
   const adapterStatus = {
     name: 'motionPipeline (Phase C)',
@@ -51,8 +51,16 @@ export default function SafetyPanel() {
           </span>
         </div>
         <div className="safety-row">
+          <span className="safety-label">Status</span>
+          <span className="safety-value">{motion?.isMoving ? 'running' : 'idle'}</span>
+        </div>
+        <div className="safety-row">
           <span className="safety-label">Active source</span>
           <span className="safety-value">{motion?.activeCommandSource || 'idle'}</span>
+        </div>
+        <div className="safety-row">
+          <span className="safety-label">Current command</span>
+          <span className="safety-value">{activeCommand?.type || 'none'}</span>
         </div>
         <div className="safety-row">
           <span className="safety-label">Adapter</span>

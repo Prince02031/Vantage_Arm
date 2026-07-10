@@ -18,6 +18,11 @@ const KEY_COLORS = [
     0xa65ae0, // 6 — purple
 ];
 
+// Flash pulse colors
+const FLASH_COLOR    = 0xffd700; // Gold — success touch
+const ACTIVE_COLOR   = 0xffffff; // White — currently targeting
+const PRESSED_COLOR  = 0x00ff88; // Green — completed/pressed
+
 // ── Canvas label texture ───────────────────────────────────────────
 function makeDigitTexture(digit, bgColor) {
     const size = 128;
@@ -92,13 +97,23 @@ export function buildKeyPanel(config) {
             color: col,
             roughness: 0.28,
             metalness: 0.05,
-            emissive: col,
+            emissive: new THREE.Color(col),
             emissiveIntensity: 0.07,
         });
         const mesh = new THREE.Mesh(geo, mat);
         mesh.position.set(pos.x, pos.y, pos.z);
         mesh.name = `key_${label}`;
-        mesh.userData = { label, config: pos, baseEmissiveIntensity: 0.07, baseColor: col };
+        mesh.userData = {
+            label,
+            config: pos,
+            baseColor: col,
+            baseEmissiveIntensity: 0.07,
+            // State flags
+            isActive: false,
+            isPressed: false,
+            // Pending animation timer
+            _decayRaf: null,
+        };
         group.add(mesh);
         keyMeshes.push(mesh);
 
@@ -125,19 +140,115 @@ export function buildKeyPanel(config) {
 }
 
 /**
- * Flash a key mesh with a brief emissive pulse.
+ * Flash a key mesh with a gold emissive pulse indicating a successful touch.
+ * Cancels any pending decay loop before starting a new one.
  * @param {THREE.Mesh} mesh
  */
 export function flashKey(mesh) {
     if (!mesh?.material) return;
     const mat = mesh.material;
     const base = mesh.userData.baseEmissiveIntensity ?? 0.07;
-    mat.emissiveIntensity = 1.2;
+
+    // Cancel any in-progress decay animation
+    if (mesh.userData._decayRaf) {
+        cancelAnimationFrame(mesh.userData._decayRaf);
+        mesh.userData._decayRaf = null;
+    }
+
+    // Set gold flash color and full emissive intensity
+    mat.emissive.setHex(FLASH_COLOR);
+    mat.emissiveIntensity = 1.5;
+
     let step = 0;
     const decay = () => {
         step += 1;
-        mat.emissiveIntensity = Math.max(base, 1.2 - step * 0.07);
-        if (mat.emissiveIntensity > base) requestAnimationFrame(decay);
+        const intensity = Math.max(base, 1.5 - step * 0.055);
+        mat.emissiveIntensity = intensity;
+
+        if (intensity > base) {
+            mesh.userData._decayRaf = requestAnimationFrame(decay);
+        } else {
+            mesh.userData._decayRaf = null;
+            // After flash, restore to pressed or base color
+            if (mesh.userData.isPressed) {
+                mat.emissive.setHex(PRESSED_COLOR);
+                mat.emissiveIntensity = 0.55;
+            } else {
+                mat.emissive.setHex(mesh.userData.baseColor);
+                mat.emissiveIntensity = base;
+            }
+        }
     };
-    requestAnimationFrame(decay);
+    mesh.userData._decayRaf = requestAnimationFrame(decay);
+}
+
+/**
+ * Highlight a key as the currently active target (approach or touch phase).
+ * Call with active=false to de-highlight.
+ * @param {THREE.Mesh} mesh
+ * @param {boolean} active
+ */
+export function setKeyActive(mesh, active) {
+    if (!mesh?.material) return;
+    mesh.userData.isActive = active;
+
+    // Don't change a key that is flashing (mid-decay)
+    if (mesh.userData._decayRaf) return;
+
+    const mat = mesh.material;
+    if (active) {
+        mat.emissive.setHex(ACTIVE_COLOR);
+        mat.emissiveIntensity = 0.6;
+    } else {
+        // Restore pressed state or base
+        if (mesh.userData.isPressed) {
+            mat.emissive.setHex(PRESSED_COLOR);
+            mat.emissiveIntensity = 0.55;
+        } else {
+            mat.emissive.setHex(mesh.userData.baseColor);
+            mat.emissiveIntensity = mesh.userData.baseEmissiveIntensity ?? 0.07;
+        }
+    }
+}
+
+/**
+ * Mark a key as successfully pressed (persistent dim green glow).
+ * @param {THREE.Mesh} mesh
+ * @param {boolean} pressed
+ */
+export function setKeyPressed(mesh, pressed) {
+    if (!mesh?.material) return;
+    mesh.userData.isPressed = pressed;
+
+    // Don't interrupt a gold flash that's in progress
+    if (mesh.userData._decayRaf) return;
+
+    const mat = mesh.material;
+    if (pressed) {
+        mat.emissive.setHex(PRESSED_COLOR);
+        mat.emissiveIntensity = 0.55;
+    } else {
+        mat.emissive.setHex(mesh.userData.baseColor);
+        mat.emissiveIntensity = mesh.userData.baseEmissiveIntensity ?? 0.07;
+    }
+}
+
+/**
+ * Reset all visual key states (e.g. at start of new PIN sequence).
+ * @param {THREE.Mesh[]} keyMeshes
+ */
+export function resetAllKeyStates(keyMeshes) {
+    if (!Array.isArray(keyMeshes)) return;
+    for (const mesh of keyMeshes) {
+        if (!mesh?.material) continue;
+        if (mesh.userData._decayRaf) {
+            cancelAnimationFrame(mesh.userData._decayRaf);
+            mesh.userData._decayRaf = null;
+        }
+        mesh.userData.isActive = false;
+        mesh.userData.isPressed = false;
+        const mat = mesh.material;
+        mat.emissive.setHex(mesh.userData.baseColor);
+        mat.emissiveIntensity = mesh.userData.baseEmissiveIntensity ?? 0.07;
+    }
 }

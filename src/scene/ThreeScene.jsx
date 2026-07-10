@@ -1,6 +1,6 @@
 // ThreeScene.jsx
 // Judge-ready 3D scene: URDF arm, 6-key panel, stylus marker, target marker,
-// OrbitControls for inspection, AxesHelper for orientation, live state streaming.
+// trajectory line, OrbitControls for inspection, AxesHelper for orientation, live state streaming.
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -8,11 +8,12 @@ import { loadUrdf } from '../robotics/urdfRobot.js';
 import { inspectUrdf, printDiscovery } from '../robotics/jointDiscovery.js';
 import { loadAndBuildKeyPanel } from './KeyPanel.jsx';
 import { createTargetMarker } from './TargetMarker.jsx';
+import { createTrajectoryLine } from './TrajectoryLine.jsx';
 import { getEndEffectorWorldPosition } from '../robotics/endEffector.js';
 import { createRobotAdapter } from '../robotics/robotAdapter.js';
 import { registerRobotAdapter, setKeyConfig } from '../core/motionPipeline.js';
 import { getJointAngles } from './ArmModel.jsx';
-import { setRobotState } from '../core/robotStore.js';
+import { setRobotState, subscribeRobotState } from '../core/robotStore.js';
 
 const URDF_URL = '/robot/6_dof_arm.urdf';
 
@@ -207,12 +208,63 @@ export default function ThreeScene({ onStateUpdate }) {
         const targetMarker = createTargetMarker();
         scene.add(targetMarker.group);
 
+        // Trajectory line (EE → active target)
+        const trajectoryLine = createTrajectoryLine();
+        scene.add(trajectoryLine.line);
+
         // Build & register adapter exactly once per page load
         if (!_adapterRegistered) {
           _adapterRegistered = true;
-          const adapter = createRobotAdapter({ robot, discovery, keyMeshes, targetMarker });
+          const adapter = createRobotAdapter({ robot, discovery, keyMeshes, targetMarker, trajectoryLine });
           registerRobotAdapter(adapter);
           window.robotAdapter = adapter; // export for console QA automation
+
+          // ── Phase D: subscribe to pinProgress for key visual states ──
+          let _prevPinState = null;
+          const _unsubPin = subscribeRobotState((state) => {
+            if (cancelled) return;
+            const pin = state.pinProgress;
+            if (!pin || !adapter.setKeyActive) return;
+
+            // Detect new PIN sequence starting — reset all key states
+            if (
+              pin.running &&
+              _prevPinState &&
+              !_prevPinState.running &&
+              pin.pin !== _prevPinState.pin
+            ) {
+              adapter.resetAllKeyStates();
+            }
+
+            // On completion or failure, hide trajectory line
+            if (!pin.running && _prevPinState?.running) {
+              adapter.hideTrajectoryLine();
+            }
+
+            // Activate current key (white highlight)
+            if (pin.running && pin.currentKey) {
+              // De-activate previous key if different
+              if (_prevPinState?.currentKey && _prevPinState.currentKey !== pin.currentKey) {
+                adapter.setKeyActive(_prevPinState.currentKey, false);
+              }
+              adapter.setKeyActive(pin.currentKey, true);
+            } else if (!pin.running && _prevPinState?.currentKey) {
+              adapter.setKeyActive(_prevPinState.currentKey, false);
+            }
+
+            // Mark successfully pressed keys (persistent green glow)
+            if (Array.isArray(pin.pressed)) {
+              for (const key of pin.pressed) {
+                adapter.setKeyPressed(key, true);
+              }
+            }
+
+            _prevPinState = { ...pin };
+          });
+
+          // Cleanup on unmount: unsubscribe
+          const _origCleanup = () => {};
+          mount._pinUnsubscribe = _unsubPin;
         }
 
         if (!cancelled) {
@@ -234,6 +286,9 @@ export default function ThreeScene({ onStateUpdate }) {
       renderer.dispose();
       if (renderer.domElement.parentNode === mount) {
         mount.removeChild(renderer.domElement);
+      }
+      if (mount._pinUnsubscribe) {
+        mount._pinUnsubscribe();
       }
     };
   }, [onStateUpdate]);

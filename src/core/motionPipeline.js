@@ -1,6 +1,6 @@
 // src/core/motionPipeline.js
 import { COMMAND_TYPES, normalizeCommand } from './commandTypes.js';
-import { validateCommand, validateWorkspace } from './safetyValidator.js';
+import { validateCommand, validateWorkspace, validateJogAxis } from './safetyValidator.js';
 import { 
   getRobotState, 
   setRobotState, 
@@ -635,14 +635,17 @@ export async function executeValidatedCommand(command, context) {
         z: currentPos.z + (command.axis === 'z' ? command.delta : 0)
       };
 
-      // Validate target workspace coordinate bounds
-      const workspaceCheck = validateWorkspace(targetPos);
-      if (!workspaceCheck.ok) {
+      // Only validate the specific axis being jogged against its bounds.
+      // Using full validateWorkspace here would wrongly reject jogs when the
+      // arm home position places other axes (e.g. X=0) outside operational bounds.
+      const joggedAxisTarget = targetPos[command.axis];
+      const axisCheck = validateJogAxis(command.axis, joggedAxisTarget);
+      if (!axisCheck.ok) {
         result = { 
           ok: false, 
-          message: `Jog coordinate rejected: ${workspaceCheck.message}`, 
+          message: `Jog rejected: ${axisCheck.message}`, 
           command, 
-          data: workspaceCheck 
+          data: axisCheck 
         };
         break;
       }

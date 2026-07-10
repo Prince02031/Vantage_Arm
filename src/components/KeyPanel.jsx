@@ -27,7 +27,7 @@ export default function KeyPanel() {
   };
 
   return (
-    <div className="key-panel">
+    <section className="key-panel" aria-label="Key panel">
       <header className="key-panel-header">
         <h3>Test Keys</h3>
         <span className="key-panel-meta">frame: {config.frame || 'base_link'}</span>
@@ -46,6 +46,6 @@ export default function KeyPanel() {
           </button>
         ))}
       </div>
-    </div>
+    </section>
   );
 }
