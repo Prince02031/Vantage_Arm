@@ -1,6 +1,6 @@
 // src/components/Dashboard.jsx
 import ThreeScene from '../scene/ThreeScene.jsx';
-import KeyPanel from '../scene/KeyPanel.jsx';
+import KeyPanel from './KeyPanel.jsx';
 import StatusLog from './StatusLog.jsx';
 import SafetyPanel from './SafetyPanel.jsx';
 import JointPanel from './JointPanel.jsx';

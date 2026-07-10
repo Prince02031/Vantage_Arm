@@ -142,6 +142,29 @@ export async function executeCommand(command, options = {}) {
     commandType: normalized.type
   });
 
+  // Check if safety is currently tripped
+  const currentState = getRobotState();
+  const isTripped = !currentState.safety.lastValid;
+  if (isTripped && 
+      normalized.type !== COMMAND_TYPES.STOP && 
+      normalized.type !== "resetSafety" && 
+      normalized.type !== "reset" && 
+      normalized.type !== "halt") {
+    
+    addStatusLog({
+      level: "error",
+      message: `Command [${normalized.type}] rejected: System is in a tripped safety state. Please reset safety first.`,
+      source: normalized.source,
+      commandType: normalized.type
+    });
+    return {
+      ok: false,
+      message: `Safety Violation: System is tripped. Reset required.`,
+      command: normalized,
+      data: null
+    };
+  }
+
   // 2. Set as active command in the store
   setRobotState({ activeCommand: normalized });
 
@@ -227,6 +250,42 @@ export async function executeValidatedCommand(command, context) {
         command, 
         data: null 
       };
+      break;
+    }
+
+    case "resetSafety":
+    case "reset": {
+      setRobotState({
+        safety: {
+          lastValid: true,
+          lastMessage: "Ready",
+          lastSafetyResult: null
+        }
+      });
+      addStatusLog({
+        level: "success",
+        message: "Safety latch reset successfully. System ready.",
+        source
+      });
+      result = { ok: true, message: "Safety latch reset successfully.", command, data: null };
+      break;
+    }
+
+    case "halt": {
+      stopMotion();
+      setRobotState({
+        safety: {
+          lastValid: false,
+          lastMessage: "Emergency Halt activated.",
+          lastSafetyResult: { ok: false, message: "Emergency Halt activated." }
+        }
+      });
+      addStatusLog({
+        level: "error",
+        message: "Emergency Halt triggered. System tripped.",
+        source
+      });
+      result = { ok: true, message: "Emergency Halt activated.", command, data: null };
       break;
     }
 

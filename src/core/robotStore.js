@@ -239,3 +239,10 @@ export function clearStopRequest() {
 export function isStopRequested() {
   return stopRequested;
 }
+
+// Compatibility object for Person 3's React hook subscriptions
+export const robotStore = {
+  getState: getRobotState,
+  subscribe: subscribeRobotState,
+  setState: setRobotState
+};

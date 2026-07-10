@@ -1,7 +1,7 @@
 // src/core/commandTypes.js
 
 /**
- * Supported motion and control command types.
+ * Supported motion and control command types (internal).
  * @constant {Object}
  */
 export const COMMAND_TYPES = {
@@ -12,6 +12,44 @@ export const COMMAND_TYPES = {
   HOME: "home",
   STOP: "stop",
   ROTATE_JOINT: "rotateJoint"
+};
+
+/**
+ * Supported motion and control command types (Person 3 dashboard).
+ */
+export const CommandTypes = {
+  MOVE_EE: 'MOVE_EE',
+  SET_EE: 'SET_EE',
+  JOG_AXIS: 'JOG_AXIS',
+  MOVE_TO: 'MOVE_TO',
+  JOG_JOINT: 'JOG_JOINT',
+  SET_JOINTS: 'SET_JOINTS',
+  HOME: 'HOME',
+  STOP: 'STOP',
+  HALT: 'HALT',
+  RESET_SAFETY: 'RESET_SAFETY',
+  TAP_KEY: 'TAP_KEY',
+  EXECUTE_PIN: 'EXECUTE_PIN',
+  RUN_PIN: 'RUN_PIN'
+};
+
+/**
+ * Helpful metadata for log rendering.
+ */
+export const CommandMeta = {
+  MOVE_EE:       { label: 'MOVE_EE',       short: 'EE Δ' },
+  SET_EE:        { label: 'SET_EE',        short: 'EE →' },
+  JOG_AXIS:      { label: 'JOG_AXIS',      short: 'EE axis' },
+  MOVE_TO:       { label: 'MOVE_TO',       short: 'EE →' },
+  JOG_JOINT:     { label: 'JOG_JOINT',     short: 'Joint Δ' },
+  SET_JOINTS:    { label: 'SET_JOINTS',    short: 'Joints' },
+  HOME:          { label: 'HOME',          short: 'Home' },
+  STOP:          { label: 'STOP',          short: 'Stop' },
+  HALT:          { label: 'HALT',          short: 'Halt' },
+  RESET_SAFETY:  { label: 'RESET_SAFETY',  short: 'Reset' },
+  TAP_KEY:       { label: 'TAP_KEY',       short: 'Tap' },
+  EXECUTE_PIN:   { label: 'EXECUTE_PIN',   short: 'PIN' },
+  RUN_PIN:       { label: 'RUN_PIN',       short: 'PIN' }
 };
 
 /**
@@ -216,60 +254,90 @@ export function normalizeCommand(command) {
     throw new Error("Invalid command: Command must be a non-null object.");
   }
 
+  // Flatten payload fields if present:
+  let raw = { ...command };
+  if (command.payload && typeof command.payload === "object") {
+    raw = { ...raw, ...command.payload };
+  }
+
+  // Map incoming type string to standard internal command type
+  let typeStr = String(raw.type);
+  if (typeStr === "JOG_AXIS" || typeStr === "JOG") {
+    typeStr = COMMAND_TYPES.JOG;
+  } else if (typeStr === "MOVE_TO") {
+    typeStr = COMMAND_TYPES.MOVE_TO;
+  } else if (typeStr === "TAP_KEY" || typeStr === "PRESS_KEY") {
+    typeStr = COMMAND_TYPES.PRESS_KEY;
+  } else if (typeStr === "EXECUTE_PIN" || typeStr === "RUN_PIN") {
+    typeStr = COMMAND_TYPES.RUN_PIN;
+  } else if (typeStr === "HOME") {
+    typeStr = COMMAND_TYPES.HOME;
+  } else if (typeStr === "STOP") {
+    typeStr = COMMAND_TYPES.STOP;
+  } else if (typeStr === "HALT") {
+    typeStr = "halt";
+  } else if (typeStr === "RESET_SAFETY") {
+    typeStr = "resetSafety";
+  }
+
   const normalized = {
-    type: String(command.type),
-    source: command.source ? String(command.source).toLowerCase() : COMMAND_SOURCES.UNKNOWN
+    type: typeStr,
+    source: raw.source ? String(raw.source).toLowerCase() : COMMAND_SOURCES.UNKNOWN
   };
 
   switch (normalized.type) {
     case COMMAND_TYPES.JOG:
-      normalized.axis = command.axis ? String(command.axis).toLowerCase() : "x";
-      normalized.delta = command.delta !== undefined ? Number(command.delta) : DEFAULT_JOG_STEP;
+      normalized.axis = raw.axis ? String(raw.axis).toLowerCase() : (raw.axisName ? String(raw.axisName).toLowerCase() : "x");
+      normalized.delta = raw.delta !== undefined ? Number(raw.delta) : DEFAULT_JOG_STEP;
       break;
 
     case COMMAND_TYPES.MOVE_TO:
-      if (!command.target || typeof command.target !== "object") {
+      if (!raw.target || typeof raw.target !== "object") {
         throw new Error("Invalid moveTo command: missing target object.");
       }
       normalized.target = {
-        x: Number(command.target.x),
-        y: Number(command.target.y),
-        z: Number(command.target.z)
+        x: Number(raw.target.x),
+        y: Number(raw.target.y),
+        z: Number(raw.target.z)
       };
       break;
 
-    case COMMAND_TYPES.PRESS_KEY:
-      if (command.key === undefined) {
+    case COMMAND_TYPES.PRESS_KEY: {
+      const keyVal = raw.key !== undefined ? raw.key : raw.keyId;
+      if (keyVal === undefined) {
         throw new Error("Invalid pressKey command: missing key value.");
       }
-      normalized.key = String(command.key);
+      normalized.key = String(keyVal);
       break;
+    }
 
     case COMMAND_TYPES.RUN_PIN:
-      if (command.pin === undefined) {
+      if (raw.pin === undefined) {
         throw new Error("Invalid runPin command: missing pin value.");
       }
-      normalized.pin = String(command.pin);
+      normalized.pin = String(raw.pin);
       break;
 
     case COMMAND_TYPES.ROTATE_JOINT:
-      if (command.jointName === undefined || command.deltaDeg === undefined) {
+      if (raw.jointName === undefined || raw.deltaDeg === undefined) {
         throw new Error("Invalid rotateJoint command: missing jointName or deltaDeg.");
       }
-      normalized.jointName = String(command.jointName);
-      normalized.deltaDeg = Number(command.deltaDeg);
+      normalized.jointName = String(raw.jointName);
+      normalized.deltaDeg = Number(raw.deltaDeg);
       break;
 
     case COMMAND_TYPES.HOME:
     case COMMAND_TYPES.STOP:
-      // Home and stop only need type and source
+    case "halt":
+    case "resetSafety":
+      // These only need type and source
       break;
 
     default:
       // For forward compatibility, keep any extra fields
-      Object.keys(command).forEach(key => {
-        if (!(key in normalized)) {
-          normalized[key] = command[key];
+      Object.keys(raw).forEach(key => {
+        if (!(key in normalized) && key !== "payload") {
+          normalized[key] = raw[key];
         }
       });
       break;
