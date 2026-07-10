@@ -1,15 +1,15 @@
 // src/core/motionPipeline.js
 import { COMMAND_TYPES, normalizeCommand } from './commandTypes.js';
 import { validateCommand } from './safetyValidator.js';
-import { 
-  getRobotState, 
-  setRobotState, 
-  addStatusLog, 
-  getRobotAdapter, 
-  setRobotAdapter, 
-  requestStop, 
-  clearStopRequest, 
-  isStopRequested 
+import {
+  getRobotState,
+  setRobotState,
+  addStatusLog,
+  getRobotAdapter,
+  setRobotAdapter,
+  requestStop,
+  clearStopRequest,
+  isStopRequested
 } from './robotStore.js';
 
 // Local module state
@@ -136,10 +136,10 @@ export async function executeCommand(command, options = {}) {
       commandType: normalized.type
     });
 
-    return { 
-      ok: false, 
-      message: `Safety Violation: ${validation.message}`, 
-      command: normalized 
+    return {
+      ok: false,
+      message: `Safety Violation: ${validation.message}`,
+      command: normalized
     };
   }
 
@@ -193,42 +193,42 @@ export async function executeValidatedCommand(command, context) {
       break;
 
     case COMMAND_TYPES.JOG:
-      result = { 
-        ok: true, 
+      result = {
+        ok: true,
         message: `Jog command validated: axis '${command.axis}', delta ${command.delta}m.`,
-        pendingImplementation: true 
+        pendingImplementation: true
       };
       break;
 
     case COMMAND_TYPES.MOVE_TO:
-      result = { 
-        ok: true, 
+      result = {
+        ok: true,
         message: `MoveTo command validated: target (${command.target.x}, ${command.target.y}, ${command.target.z}).`,
-        pendingImplementation: true 
+        pendingImplementation: true
       };
       break;
 
     case COMMAND_TYPES.PRESS_KEY:
-      result = { 
-        ok: true, 
+      result = {
+        ok: true,
         message: `PressKey command validated: target key '${command.key}'.`,
-        pendingImplementation: true 
+        pendingImplementation: true
       };
       break;
 
     case COMMAND_TYPES.RUN_PIN:
-      result = { 
-        ok: true, 
+      result = {
+        ok: true,
         message: `RunPin command validated: 6-digit sequence '${command.pin}'.`,
-        pendingImplementation: true 
+        pendingImplementation: true
       };
       break;
 
     case COMMAND_TYPES.ROTATE_JOINT:
-      result = { 
-        ok: true, 
+      result = {
+        ok: true,
         message: `RotateJoint command validated: joint '${command.jointName}', rotation ${command.deltaDeg}°.`,
-        pendingImplementation: true 
+        pendingImplementation: true
       };
       break;
 
