@@ -713,3 +713,41 @@ code {
   color: var(--muted);
   pointer-events: none;
 }
+
+/* ---------- KeyPressPanel Violations ---------- */
+.keypress-violations {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px dashed #30363d;
+}
+
+.violation-title {
+  font-size: 11px;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 0.5rem 0;
+}
+
+.violation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.4rem;
+}
+
+.btn-violation {
+  background: #21262d;
+  border: 1px solid #da363344;
+  color: #f85149;
+  font-size: 11px;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  font-weight: 600;
+  transition: all 0.12s ease;
+}
+
+.btn-violation:hover:not(:disabled) {
+  background: #da363318;
+  border-color: #f8514988;
+}
+

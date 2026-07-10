@@ -143,6 +143,20 @@ Every command passing through `executeCommand` is subjected to validation in `sa
 2. The global safety latch is tripped (`safety.lastValid = false`).
 3. The system rejects all subsequent movement commands until an operator explicitly triggers `resetSafety`.
 
+#### Concrete Examples of Rejected Commands:
+*   **Workspace Boundary Violation (Cartesian Target)**:
+    *   *Command*: `moveTo(x: 1.5, y: 0.2, z: 0.5)`
+    *   *Failure Reason*: Rejected because the coordinate $x = 1.5\text{m}$ lies outside the allowed horizontal corridor bounds of $[-1.2\text{m}, 1.2\text{m}]$ defined in `WORKSPACE_BOUNDS`.
+*   **Collision Prevention (Cartesian Target)**:
+    *   *Command*: `moveTo(x: 0.1, y: 0.2, z: -0.15)`
+    *   *Failure Reason*: Rejected because the coordinate $z = -0.15\text{m}$ is below the physical floor height limit of $0.0\text{m}$.
+*   **Excessive Jog Delta (Jog Command)**:
+    *   *Command*: `jog(axis: "z", delta: 0.15)`
+    *   *Failure Reason*: Rejected because the single-step jog increment ($15\text{cm}$) exceeds the safety threshold limit of $10\text{cm}$ ($0.10\text{m}$) to prevent high-velocity snapping.
+*   **Out-of-Range Key (PIN Runner)**:
+    *   *Command*: `runPin(pin: "123457")`
+    *   *Failure Reason*: Rejected because the digit `7` is not a valid key label (only `1` through `6` are allowed) and has no coordinates mapped in `key.config.json`.
+
 ### B. Singularity Resolution (Straight-Arm Issue)
 When the robotic arm starts from its straight-up home pose ($[0,0,0,0,0,0,0]$), it sits in a **coordinate singularity**. In this state, small changes to individual joints do not improve the vertical distance error without increasing the horizontal error, causing simple gradient descent and CCD solvers to fail.
 
