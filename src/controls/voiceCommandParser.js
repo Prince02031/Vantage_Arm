@@ -1,4 +1,5 @@
 import { getRobotAdapter } from '../core/robotStore.js';
+import { parseAgenticCommand } from './agenticCommandParser.js';
 
 const NUMBER_WORDS = {
   zero: '0', one: '1', two: '2', three: '3', four: '4', five: '5', six: '6',
@@ -148,7 +149,41 @@ export async function parseAndExecuteVoiceCommand(input, executeCommand, context
   const parseResult = parseVoiceCommand(input, context);
 
   if (!parseResult.ok) {
-    return { ok: false, message: parseResult.message, parseResult };
+    if (parseResult.message === 'Empty transcript.') {
+      return { ok: false, message: parseResult.message, parseResult };
+    }
+
+    // Unrecognized by deterministic parser -> Fallback to Agentic Voice Parser
+    try {
+      const agenticResult = await parseAgenticCommand(input, context);
+      if (!agenticResult.ok) {
+        return { ok: false, message: agenticResult.message, parseResult: agenticResult };
+      }
+
+      // Execute sequential commands from the agentic plan
+      const results = [];
+      for (const cmd of agenticResult.commands) {
+        const res = await executeCommand(cmd, context);
+        results.push(res);
+        if (!res.ok) {
+          return { 
+            ok: false, 
+            message: `Agentic sequence failed at step: ${res.message}`, 
+            parseResult: agenticResult, 
+            executionResults: results 
+          };
+        }
+      }
+
+      return { 
+        ok: true, 
+        message: agenticResult.message || 'Agentic sequence executed successfully.', 
+        parseResult: agenticResult, 
+        executionResults: results 
+      };
+    } catch (err) {
+      return { ok: false, message: `Agentic parser failed: ${err.message}`, parseResult };
+    }
   }
 
   // Execute a single command

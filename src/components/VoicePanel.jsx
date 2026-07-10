@@ -9,16 +9,12 @@ import { addStatusLog } from '../core/robotStore.js';
 // Phrase examples covering the new Phase E commands. Click a chip to fire it.
 const EXAMPLES = [
   'move up',
-  'move down',
-  'move left',
-  'move right',
-  'move forward',
-  'move backward',
   'rotate base 30 degrees',
   'press key five',
-  'press key 5',
   'enter pin 123456',
-  'enter pin one two three four five six',
+  'draw a triangle',
+  'press keys 1 3 5',
+  'move to safe zone',
   'home',
   'stop'
 ];
@@ -41,7 +37,9 @@ function speakFeedback(message) {
 export default function VoicePanel() {
   const [transcript, setTranscript] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState(null);
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
   
   const recognitionRef = useRef(null);
   // submitRef always points to the latest submit closure — fixes stale closure bug
@@ -55,37 +53,51 @@ export default function VoicePanel() {
       return;
     }
 
+    setIsProcessing(true);
+    setResult(null);
+
     addStatusLog({
       level: 'info',
       message: `Voice input captured: "${phrase}"`,
       source: 'voice'
     });
 
-    const res = await parseAndExecuteVoiceCommand(phrase, executeCommand, { source: 'voice' });
-    
-    // Build display message: parse failure → parse msg, exec failure → exec msg, success → exec msg
-    const isParsed = res.parseResult ? res.parseResult.ok : false;
-    let displayMsg;
-    if (!isParsed) {
-      // Parse itself failed — show why parsing rejected it
-      displayMsg = res.parseResult ? res.parseResult.message : res.message;
-    } else if (!res.ok) {
-      // Parse passed but execution/pipeline rejected it — show execution reason
-      displayMsg = res.message || (res.parseResult && res.parseResult.message);
-    } else {
-      // Full success — show execution result (e.g. "Key [5] pressed successfully")
-      displayMsg = res.message || (res.parseResult && res.parseResult.message);
-    }
-    
-    setResult({ ok: isParsed && res.ok, message: displayMsg });
-    speakFeedback(displayMsg);
-
-    if (!isParsed) {
-      addStatusLog({
-        level: 'warning',
-        message: `Parser failed to understand: "${phrase}". Reason: ${displayMsg}`,
-        source: 'voice'
+    try {
+      const res = await parseAndExecuteVoiceCommand(phrase, executeCommand, { source: 'voice' });
+      
+      // Build display message: parse failure → parse msg, exec failure → exec msg, success → exec msg
+      const isParsed = res.parseResult ? res.parseResult.ok : false;
+      let displayMsg;
+      if (!isParsed) {
+        // Parse itself failed — show why parsing rejected it
+        displayMsg = res.parseResult ? res.parseResult.message : res.message;
+      } else if (!res.ok) {
+        // Parse passed but execution/pipeline rejected it — show execution reason
+        displayMsg = res.message || (res.parseResult && res.parseResult.message);
+      } else {
+        // Full success — show execution result (e.g. "Key [5] pressed successfully")
+        displayMsg = res.message || (res.parseResult && res.parseResult.message);
+      }
+      
+      setResult({ 
+        ok: isParsed && res.ok, 
+        message: displayMsg,
+        commands: res.parseResult?.commands,
+        mode: res.parseResult?.mode
       });
+      speakFeedback(displayMsg);
+
+      if (!isParsed) {
+        addStatusLog({
+          level: 'warning',
+          message: `Parser failed to understand: "${phrase}". Reason: ${displayMsg}`,
+          source: 'voice'
+        });
+      }
+    } catch (err) {
+      setResult({ ok: false, message: err.message });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -143,11 +155,46 @@ export default function VoicePanel() {
   return (
     <section className="voice-panel" aria-label="Voice controls">
       <header className="voice-panel-header">
-        <h3>Voice &amp; Text Command</h3>
+        <h3>Voice &amp; Agentic Control</h3>
         <span className="panel-subtitle">
-          {hasSpeechSupport ? 'Mic Supported · TTS Ready' : 'Mic Unsupported · Text Fallback Only'}
+          {hasSpeechSupport ? 'Mic Supported · Gemini Ready' : 'Mic Unsupported · Text Fallback Only'}
         </span>
       </header>
+
+      {/* Gemini API Key input */}
+      <div className="gemini-key-row" style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.6rem', alignItems: 'center' }}>
+        <input
+          type="password"
+          value={apiKey}
+          onChange={(e) => {
+            setApiKey(e.target.value);
+            localStorage.setItem('gemini_api_key', e.target.value);
+          }}
+          placeholder="Gemini API Key (Leave empty to use local presets)"
+          style={{
+            flex: 1,
+            background: '#0d1117',
+            border: '1px solid #30363d',
+            color: '#e6edf3',
+            padding: '0.35rem 0.5rem',
+            borderRadius: '6px',
+            fontSize: '11px'
+          }}
+        />
+        {apiKey && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ fontSize: '11px', padding: '0.35rem 0.5rem', whiteSpace: 'nowrap' }}
+            onClick={() => {
+              setApiKey('');
+              localStorage.removeItem('gemini_api_key');
+            }}
+          >
+            Clear Key
+          </button>
+        )}
+      </div>
 
       {hasSpeechSupport && (
         <div style={{ marginBottom: '0.75rem' }}>
@@ -156,6 +203,7 @@ export default function VoicePanel() {
             className={`btn ${isListening ? 'btn-danger' : 'btn-primary'}`} 
             style={{ width: '100%' }}
             onClick={toggleListening}
+            disabled={isProcessing}
           >
             {isListening ? '🛑 Stop Listening' : '🎤 Start Listening'}
           </button>
@@ -167,11 +215,14 @@ export default function VoicePanel() {
           type="text"
           value={transcript}
           onChange={(e) => setTranscript(e.target.value)}
-          placeholder='Try: "press key two" or "home"'
+          placeholder='Try: "draw a triangle", "press key five" or "home"'
           onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           aria-label="Voice command text input"
+          disabled={isProcessing}
         />
-        <button type="button" className="btn btn-secondary" onClick={() => submit()}>Run</button>
+        <button type="button" className="btn btn-secondary" onClick={() => submit()} disabled={isProcessing}>
+          {isProcessing ? 'Thinking…' : 'Run'}
+        </button>
       </div>
 
       <div className="voice-examples">
@@ -182,6 +233,7 @@ export default function VoicePanel() {
             type="button"
             className="chip"
             onClick={() => { setTranscript(ex); submit(ex); }}
+            disabled={isProcessing}
           >
             {ex}
           </button>
@@ -195,10 +247,30 @@ export default function VoicePanel() {
         </div>
       )}
 
+      {result && result.commands && (
+        <div className="agentic-plan-box" style={{
+          marginTop: '0.5rem',
+          padding: '0.5rem',
+          background: '#0d1117',
+          border: '1px solid #30363d',
+          borderRadius: '6px',
+          fontSize: '11px',
+          fontFamily: 'monospace',
+          color: '#79c0ff'
+        }}>
+          <div style={{ color: '#8b949e', marginBottom: '0.3rem', fontSize: '10px', textTransform: 'uppercase', fontWeight: 600 }}>
+            Generated Plan ({result.mode})
+          </div>
+          <pre style={{ margin: 0, overflowX: 'auto', whiteSpace: 'pre-wrap' }}>
+            {JSON.stringify(result.commands, null, 2)}
+          </pre>
+        </div>
+      )}
+
       <p className="voice-hint">
-        Phase E: Commands must match strict deterministic regexes. The active
-        parser intercepts voice or typed input and translates it strictly into 
-        motion pipeline commands. Unrecognized inputs are rejected.
+        Phase E/Agentic: Input is parsed by strict regexes first. If unrecognized, 
+        it falls back to a Gemini 2.5 LLM agent (or local simulator if no API key is set) 
+        to compile a multi-step JSON trajectory plan, validated by the safety validator.
       </p>
     </section>
   );
