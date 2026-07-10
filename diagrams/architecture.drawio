@@ -1,0 +1,142 @@
+<mxfile host="65bd71144e">
+  <diagram id="Vantge_Arm_Architecture" name="Vantage Arm System Architecture">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="960" pageHeight="760" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <!-- ================= INPUT LAYERS (Y = 40) ================= -->
+        <mxCell id="input_joystick" value="&lt;b&gt;Joystick Jogging&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Manual GUI &lt;br&gt;step offset jog&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#1e1e2e;strokeColor=#89b4fa;fontColor=#cdd6f4;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="110" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="input_keyboard" value="&lt;b&gt;Keyboard Jogging&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;WASD / Arrows&lt;br&gt;jogging controls&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#1e1e2e;strokeColor=#89b4fa;fontColor=#cdd6f4;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="170" y="40" width="110" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="input_sliders" value="&lt;b&gt;Sliders Panel&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Direct joint angle&lt;br&gt;GUI sliders&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#1e1e2e;strokeColor=#89b4fa;fontColor=#cdd6f4;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="300" y="40" width="110" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="input_pin" value="&lt;b&gt;PIN Entry Panel&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Auto approach-&lt;br&gt;touch-retreat run&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#1e1e2e;strokeColor=#89b4fa;fontColor=#cdd6f4;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="430" y="40" width="110" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="input_voice" value="&lt;b&gt;Voice Command&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Deterministic&lt;br&gt;keyword parsing&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=12;fillColor=#1e1e2e;strokeColor=#89b4fa;fontColor=#cdd6f4;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="560" y="40" width="110" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- ================= TIER 2: COMMAND BROKER (Y = 150) ================= -->
+        <mxCell id="exec_broker" value="&lt;b&gt;Unified Command Broker&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;2&quot; color=&quot;#a6e3a1&quot;&gt;motionPipeline.js: executeCommand(command)&lt;/font&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Routes all movement types: JOG, MOVE_TO, ROTATE, PRESS_KEY, RUN_PIN, HOME, STOP&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#313244;strokeColor=#a6e3a1;fontColor=#cdd6f4;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="170" y="150" width="370" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- ================= TIER 3: SAFETY VALIDATOR (Y = 260) ================= -->
+        <mxCell id="validator" value="&lt;b&gt;Safety &amp; Boundary Validator&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;2&quot; color=&quot;#f38ba8&quot;&gt;safetyValidator.js: validateCommand()&lt;/font&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Checks workspace Cartesian bounds (cylinder/floor) &amp;amp; joint limits (min/max/lower/upper)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#313244;strokeColor=#f38ba8;fontColor=#cdd6f4;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="170" y="260" width="370" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- ================= TIER 4: KINEMATICS & SOLVER (Y = 370) ================= -->
+        <mxCell id="ik_solver" value="&lt;b&gt;Inverse Kinematics (IK) Solver&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;2&quot;&gt;ikSolver.js: solveIK(target, adapter)&lt;/font&gt;&lt;br&gt;&lt;font size=&quot;1&quot; align=&quot;left&quot;&gt;• &lt;b&gt;Method A (Live GD):&lt;/b&gt; Symmetric finite-difference gradient.&lt;br&gt;• &lt;b&gt;Method B (Fallback CCD):&lt;/b&gt; Analytical Model solver.&lt;br&gt;Accuracy: 5mm tolerance limit (0.005m).&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=10;fillColor=#1e1e2e;strokeColor=#f9e2af;fontColor=#cdd6f4;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="370" width="280" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="fk_model" value="&lt;b&gt;Forward Kinematics (FK) Engine&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;2&quot;&gt;ikSolver.js: computeForwardKinematics()&lt;/font&gt;&lt;br&gt;&lt;font size=&quot;1&quot; align=&quot;left&quot;&gt;• Traverses link joints via URDF parameters.&lt;br&gt;• Computes accumulated world translation matrix.&lt;br&gt;• Outputs 3D end-effector tips &amp;amp; mechanical axis vectors.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=10;fillColor=#1e1e2e;strokeColor=#f9e2af;fontColor=#cdd6f4;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="390" y="370" width="280" height="90" as="geometry"/>
+        </mxCell>
+
+        <!-- ================= TIER 5: TRAJECTORY LAYER (Y = 500) ================= -->
+        <mxCell id="traj_runner" value="&lt;b&gt;Trajectory Execution Runner&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;2&quot; color=&quot;#cba6f7&quot;&gt;trajectoryRunner.js: runTrajectory()&lt;/font&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Interpolates joint values dynamically via requestAnimationFrame with easeInOutCubic.&lt;br&gt;Checks for stop interrupts every frame.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#1e1e2e;strokeColor=#cba6f7;fontColor=#cdd6f4;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="170" y="500" width="370" height="70" as="geometry"/>
+        </mxCell>
+
+        <!-- ================= TIER 6: SCENE & RENDERING LAYER (Y = 610) ================= -->
+        <mxCell id="robot_adapter" value="&lt;b&gt;Robot Scene Adapter&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;2&quot;&gt;robotAdapter.js: createRobotAdapter()&lt;/font&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Bridges React/state logic to Three.js graph objects. Reads angles, world transforms, flashes target/hit key indicators.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=10;fillColor=#1e1e2e;strokeColor=#fab387;fontColor=#cdd6f4;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="610" width="280" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="three_scene" value="&lt;b&gt;WebGL Visual Scene (Three.js)&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;2&quot;&gt;ThreeScene.jsx&lt;/font&gt;&lt;br&gt;&lt;font size=&quot;1&quot;&gt;Renders 6-DOF URDF mesh models, 3D target coordinates, trace paths, and key configuration panels from config.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=10;fillColor=#1e1e2e;strokeColor=#fab387;fontColor=#cdd6f4;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="390" y="610" width="280" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- ================= TELEMETRY STATE STORE (SIDE COLUMN) ================= -->
+        <mxCell id="state_store" value="&lt;b&gt;Central State Store&lt;/b&gt;&lt;br&gt;&lt;font size=&quot;2&quot; color=&quot;#89dceb&quot;&gt;robotStore.js&lt;/font&gt;&lt;br&gt;&lt;br&gt;&lt;font size=&quot;1&quot; align=&quot;left&quot;&gt;&lt;b&gt;Active Telemetry Store:&lt;/b&gt;&lt;br&gt;• targetPosition {x,y,z}&lt;br&gt;• endEffectorPosition {x,y,z}&lt;br&gt;• jointAngles (Map)&lt;br&gt;• isMoving (Boolean flag)&lt;br&gt;• safety.ikSolved &amp;amp; ikError&lt;br&gt;&lt;br&gt;&lt;b&gt;Run States:&lt;/b&gt;&lt;br&gt;• pinProgress (digit queue)&lt;br&gt;• lastKeyPressResult&lt;br&gt;&lt;br&gt;&lt;b&gt;Reactive Observers:&lt;/b&gt;&lt;br&gt;• StatusLog events console&lt;br&gt;• Dashboard GUI display&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=6;fillColor=#181825;strokeColor=#89dceb;fontColor=#cdd6f4;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="710" y="150" width="210" height="540" as="geometry"/>
+        </mxCell>
+
+        <!-- ======================================================= -->
+        <!-- ======================== EDGES ======================== -->
+        <!-- ======================================================= -->
+
+        <!-- Inputs to Command Broker -->
+        <mxCell id="edge_in_joystick" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a6adc8;strokeWidth=1.5;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.15;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="input_joystick" target="exec_broker">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_in_keyboard" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a6adc8;strokeWidth=1.5;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.32;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="input_keyboard" target="exec_broker">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_in_sliders" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a6adc8;strokeWidth=1.5;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="input_sliders" target="exec_broker">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_in_pin" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a6adc8;strokeWidth=1.5;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.68;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="input_pin" target="exec_broker">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_in_voice" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a6adc8;strokeWidth=1.5;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.85;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="input_voice" target="exec_broker">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Command Broker -> Safety Validator -->
+        <mxCell id="edge_broker_validator" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a6e3a1;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="exec_broker" target="validator">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Safety Validator -> IK Solver / FK Model -->
+        <mxCell id="edge_val_ik" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a6adc8;strokeWidth=1.5;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="validator" target="ik_solver">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge_val_fk" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a6adc8;strokeWidth=1.5;exitX=0.85;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="validator" target="fk_model">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- IK Solver <--> FK Model -->
+        <mxCell id="edge_ik_fk" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#f9e2af;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;" edge="1" parent="1" source="ik_solver" target="fk_model">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- IK Solver -> Trajectory Runner -->
+        <mxCell id="edge_ik_traj" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#a6adc8;strokeWidth=1.5;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.15;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="ik_solver" target="traj_runner">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Trajectory Runner -> Robot Adapter -->
+        <mxCell id="edge_traj_adapter" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#cba6f7;strokeWidth=2;exitX=0.15;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="traj_runner" target="robot_adapter">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Robot Adapter <--> ThreeScene Object Graph -->
+        <mxCell id="edge_adapter_scene" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#fab387;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="robot_adapter" target="three_scene">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Bi-directional connections to the Central State Store -->
+        <!-- Broker updates and listens to store -->
+        <mxCell id="edge_broker_store" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#89dceb;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.08;entryDx=0;entryDy=0;" edge="1" parent="1" source="exec_broker" target="state_store">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <!-- Validator reads store -->
+        <mxCell id="edge_val_store" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#89dceb;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;dashed=1;" edge="1" parent="1" source="validator" target="state_store">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <!-- Trajectory updates store on every frame -->
+        <mxCell id="edge_traj_store" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#89dceb;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.68;entryDx=0;entryDy=0;" edge="1" parent="1" source="traj_runner" target="state_store">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <!-- Scene reads/writes to store -->
+        <mxCell id="edge_scene_store" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#89dceb;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.9;entryDx=0;entryDy=0;" edge="1" parent="1" source="three_scene" target="state_store">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
