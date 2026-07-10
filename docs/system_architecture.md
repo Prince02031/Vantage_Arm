@@ -2,6 +2,10 @@
 
 This document outlines the detailed system architecture and execution pipeline of the **Vantage Arm** 6-DOF robotic simulation suite. It serves as a comprehensive reference for judging and technical review.
 
+> [!TIP]
+> **Editable Draw.io Diagram Available**
+> A native, fully laid-out Draw.io diagram file is located at [docs/vantage_arm_pipeline.drawio](file:///d:/WebDev/Hackathon/RS%20Techathon/Vantage_Arm/docs/vantage_arm_pipeline.drawio). You can open or drag-and-drop this file directly into [draw.io](https://app.diagrams.net/) to instantly view and edit the high-fidelity pipeline graph.
+
 > [!IMPORTANT]
 > **Single Shared Pipeline Rule**
 > The system enforces a strict single-entry motion control pipeline: **all** inputs (UI controls, keyboard, voice, and autonomous routines) must construct a structured command and dispatch it via the central entry point: `executeCommand(command)`.
