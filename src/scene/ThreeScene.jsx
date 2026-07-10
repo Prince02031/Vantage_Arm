@@ -202,6 +202,7 @@ export default function ThreeScene({ onStateUpdate }) {
           _adapterRegistered = true;
           const adapter = createRobotAdapter({ robot, discovery, keyMeshes, targetMarker });
           registerRobotAdapter(adapter);
+          window.robotAdapter = adapter; // export for console QA automation
         }
 
         if (!cancelled) {

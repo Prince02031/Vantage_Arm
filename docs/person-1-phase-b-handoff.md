@@ -121,3 +121,26 @@ const adapter = getRobotAdapter(); // null before URDF loads
 - **`adapter.getRobotAdapter()` can be null** — always null-check before calling adapter methods if reading from `motionPipeline.js` store.
 - **Registration happens once** — after URDF loads, adapter is registered in `motionPipeline.js`. Person 2 should poll `getRobotAdapter()` or listen for the adaptor.
 - **Key coordinates** — available via `adapter.getMovableJoints()` (joints), and separately via `fetch('/config/key.config.json')` if Person 2 needs them for IK target setup.
+
+---
+
+## 10. Self-Verification QA Audit
+
+The following QA checklist has been executed in the browser and verified:
+
+| # | QA Task | Status | Results / Proof |
+|---|---|---|---|
+| 1 | URDF loads and renders | ✅ Pass | Verified, 3D scene renders the manipulator correctly. |
+| 2 | 6-key panel renders from JSON | ✅ Pass | Dynamically fetched from `/config/key.config.json` at runtime. |
+| 3 | Digit labels visible on keys | ✅ Pass | 1-6 canvas textures are drawn on the top faces of the boxes. |
+| 4 | robotAdapter exists + 8 methods | ✅ Pass | Fully verified on `window.robotAdapter`. |
+| 5 | `setJointAngles()` changes joints | ✅ Pass | Angles are successfully mapped and clamped to physical joints. |
+| 6 | `getJointAngles()` returns state | ✅ Pass | Correctly reports back matching joint radians. |
+| 7 | `getMovableJoints()` accurate | ✅ Pass | Returns only the 7 active revolute joints. |
+| 8 | `getJointLimits()` accurate | ✅ Pass | Matches URDF XML specs for yaw, pitch, and roll limits. |
+| 9 | `getEndEffectorPosition()` stable | ✅ Pass | Calculates world relative positional vector of `stylus_tip`. |
+| 10| Null-safety check before load | ✅ Pass | Return empty values (`{}`, `[]`, `null`) rather than throwing exceptions. |
+| 11| Single registration check | ✅ Pass | Initialized once. Hot reload resets properly. |
+| 12| No duplicate pipeline | ✅ Pass | Source files are registered strictly into Person 2's `motionPipeline.js`. |
+| 13| No hardcoded key coordinates | ✅ Pass | Extracted strictly from config file. |
+
