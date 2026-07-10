@@ -190,7 +190,10 @@ export async function parseAgenticCommand(transcript, context = {}) {
 
       if (!response.ok) {
         const errJson = await response.json().catch(() => ({}));
-        throw new Error(errJson.error || `Proxy server returned status ${response.status}`);
+        const errMsg = typeof errJson.error === 'object' && errJson.error !== null
+          ? (errJson.error.message || JSON.stringify(errJson.error))
+          : (errJson.error || `Proxy server returned status ${response.status}`);
+        throw new Error(errMsg);
       }
 
       const resData = await response.json();
