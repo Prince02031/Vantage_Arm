@@ -1,0 +1,131 @@
+<mxfile host="Electron" modified="2026-07-10T18:30:00.000Z" agent="5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/21.2.8 Chrome/112.0.5615.204 Electron/24.6.0 Safari/537.36" version="21.2.8" type="device">
+  <diagram id="electrical_schematic" name="Electrical Schematic">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- ESP32 DevKit V1 Module -->
+        <mxCell id="esp32" value="ESP32 DEVKIT V1&lt;br&gt;(Microcontroller)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;fontColor=#ffffff;strokeColor=#006e10;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="280" y="240" width="180" height="420" as="geometry" />
+        </mxCell>
+        
+        <!-- Power Rails -->
+        <mxCell id="vin_rail" value="5V (VIN BUS)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="v33_rail" value="3.3V BUS" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffcc99;strokeColor=#d79b00;fontStyle=1;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="240" y="40" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="gnd_rail" value="COMMON GND BUS" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="440" y="40" width="160" height="40" as="geometry" />
+        </mxCell>
+        
+        <!-- SSD1306 OLED -->
+        <mxCell id="oled" value="SSD1306 OLED&lt;br&gt;(I2C Display)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="40" y="140" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- DHT22 Sensor -->
+        <mxCell id="dht22" value="DHT22 Sensor&lt;br&gt;(Temp / Humidity)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="580" y="140" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- PIR Motion Sensor -->
+        <mxCell id="pir" value="PIR Motion Sensor&lt;br&gt;(Workspace Guard)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="580" y="240" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- LDR Light Sensor -->
+        <mxCell id="ldr" value="LDR Light Module&lt;br&gt;(Analog Light)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="580" y="340" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- MQ-2 Gas Module -->
+        <mxCell id="mq2" value="MQ-2 Gas Sensor&lt;br&gt;(Smoke Detector)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="580" y="440" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Potentiometer (Current) -->
+        <mxCell id="pot" value="Potentiometer&lt;br&gt;(Simulated Current)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="580" y="540" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- SG90/MG996R Servo Motor -->
+        <mxCell id="servo" value="Joint 1 Servo Motor&lt;br&gt;(SG90/MG996R)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="580" y="640" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Buzzer -->
+        <mxCell id="buzzer" value="Buzzer Module&lt;br&gt;(Audible Alarm)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="40" y="240" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Panic E-Stop Button -->
+        <mxCell id="button" value="Panic Pushbutton&lt;br&gt;(E-Stop Interrupt)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="40" y="340" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- LED Indicators (1-6) -->
+        <mxCell id="led_bank" value="6x Status LED Ladder&lt;br&gt;(0.5A - 6A Indicators)&lt;br&gt;[D16, D17, D18, D19, D23, D25]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12" vertex="1" parent="1">
+          <mxGeometry x="40" y="440" width="160" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Connections (Wires) -->
+        <!-- OLED connections -->
+        <mxCell id="wire_sda" value="SDA (D21)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.15;entryDx=0;entryDy=0;strokeColor=#00cc00;strokeWidth=2" edge="1" parent="1" source="oled" target="esp32">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="wire_scl" value="SCL (D22)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.22;entryDx=0;entryDy=0;strokeColor=#ffbf00;strokeWidth=2" edge="1" parent="1" source="oled" target="esp32">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- DHT22 Connect -->
+        <mxCell id="wire_dht" value="DHT Data (D15)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.15;entryDx=0;entryDy=0;strokeColor=#009900;strokeWidth=2" edge="1" parent="1" source="dht22" target="esp32">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- PIR Connect -->
+        <mxCell id="wire_pir" value="PIR OUT (D4)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.28;entryDx=0;entryDy=0;strokeColor=#00994d;strokeWidth=2" edge="1" parent="1" source="pir" target="esp32">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- LDR Connect -->
+        <mxCell id="wire_ldr" value="LDR AO (D34)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.42;entryDx=0;entryDy=0;strokeColor=#0080ff;strokeWidth=2" edge="1" parent="1" source="ldr" target="esp32">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- MQ2 Connect -->
+        <mxCell id="wire_mq2" value="MQ-2 AOUT (D35)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.56;entryDx=0;entryDy=0;strokeColor=#b300b3;strokeWidth=2" edge="1" parent="1" source="mq2" target="esp32">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Pot Connect -->
+        <mxCell id="wire_pot" value="POT SIG (D32)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.72;entryDx=0;entryDy=0;strokeColor=#e68a00;strokeWidth=2" edge="1" parent="1" source="pot" target="esp32">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Servo PWM Connect -->
+        <mxCell id="wire_servo" value="SERVO PWM (D13)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.88;entryDx=0;entryDy=0;strokeColor=#ff6600;strokeWidth=2" edge="1" parent="1" source="servo" target="esp32">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Buzzer Connect -->
+        <mxCell id="wire_buzzer" value="BUZZER IN (D27)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.48;entryDx=0;entryDy=0;strokeColor=#ff3333;strokeWidth=2" edge="1" parent="1" source="buzzer" target="esp32">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Button Connect -->
+        <mxCell id="wire_btn" value="ESTOP (D14)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.64;entryDx=0;entryDy=0;strokeColor=#9933ff;strokeWidth=2" edge="1" parent="1" source="button" target="esp32">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- LED Bank Connect -->
+        <mxCell id="wire_leds" value="6x GPIO LINES" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.85;entryDx=0;entryDy=0;strokeColor=#cca300;strokeWidth=2" edge="1" parent="1" source="led_bank" target="esp32">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

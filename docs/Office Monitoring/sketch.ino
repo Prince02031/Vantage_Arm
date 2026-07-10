@@ -1,6 +1,6 @@
 /*
  * WattWatch - Smart Office Monitoring System
- * ESP32 DevKit V1 + DHT22 + PIR + LDR + MQ2 + Potentiometer (ACS712 substitute)
+ * ESP32 DevKit V1 + DHT22 + PIR + LDR + MQ2 + Potentiometer (ACS712 substitute) + Servo Motor
  * OLED (SSD1306, I2C 0x3C) status display + Serial JSON telemetry + LED bank
  * representing 15 office devices, driven by simulated current draw.
  */
@@ -9,6 +9,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <DHT.h>
+#include <ESP32Servo.h>
 
 // ---------------- Pin assignment ----------------
 #define DHTPIN        15
@@ -21,6 +22,7 @@
 #define OLED_SCL      22
 #define BUZZER_PIN    27
 #define BUTTON_PIN    14
+#define SERVO_PIN     13   // Joint Servo Motor Control Pin
 
 #define LED1_PIN      16
 #define LED2_PIN      17
@@ -37,12 +39,14 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 DHT dht(DHTPIN, DHTTYPE);
+Servo joint1;  // Joint servo motor object
 
 // ---------------- Thresholds ----------------
-const int   SMOKE_THRESHOLD_RAW = 3000; // out of 4095
+const int   SMOKE_THRESHOLD_RAW = 3400; // out of 4095
 const unsigned long UPDATE_INTERVAL_MS = 1000;
 
 unsigned long lastUpdate = 0;
+bool smokeAlarmActive = false;
 
 // LED pins array for the 6 discrete indicator LEDs (mapped to current bands)
 const int ledPins[6] = {LED1_PIN, LED2_PIN, LED3_PIN, LED4_PIN, LED5_PIN, LED6_PIN};
@@ -65,6 +69,15 @@ void setup() {
 
   dht.begin();
 
+  // Joint Servo setup
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
+  joint1.setPeriodHertz(50);      // standard 50 Hz servo
+  joint1.attach(SERVO_PIN, 500, 2400); // Standard min/max pulse values
+  joint1.write(0);                // Initialize at 0 degrees
+
   Wire.begin(OLED_SDA, OLED_SCL);
   if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS)) {
     Serial.println("SSD1306 allocation failed");
@@ -73,8 +86,8 @@ void setup() {
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);
-  display.println("WattWatch");
-  display.println("Booting...");
+  display.println("WattWatch Setup");
+  display.println("Servo & Safety PoC");
   display.display();
   delay(500);
 }
@@ -156,11 +169,10 @@ void updateOled(float temperature, float humidity, bool motion, int smoke, float
 void loop() {
   unsigned long now = millis();
   if (now - lastUpdate < UPDATE_INTERVAL_MS) {
-    // still poll the button quickly for responsiveness
+    // Poll the button quickly for instant alarm responsiveness
     bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
-    if (buttonPressed) {
-      digitalWrite(BUZZER_PIN, HIGH);
-    }
+    bool alarm = buttonPressed || smokeAlarmActive;
+    digitalWrite(BUZZER_PIN, alarm ? HIGH : LOW);
     return;
   }
   lastUpdate = now;
@@ -173,11 +185,16 @@ void loop() {
   float current = readSimulatedCurrent();
   bool buttonPressed = (digitalRead(BUTTON_PIN) == LOW);
 
-  bool alarm = (smokeRaw > SMOKE_THRESHOLD_RAW) || buttonPressed;
+  smokeAlarmActive = (smokeRaw > SMOKE_THRESHOLD_RAW);
+  bool alarm = smokeAlarmActive || buttonPressed;
   digitalWrite(BUZZER_PIN, alarm ? HIGH : LOW);
 
   updateLedBank(current);
   updateOled(temperature, humidity, motion, smokeRaw, current, alarm);
+
+  // Map current load (0-6A) to physical servo position angle (0 to 180 degrees)
+  int servoAngle = map((int)(current * 100.0), 0, 600, 0, 180);
+  joint1.write(servoAngle);
 
   // ---- Serial JSON telemetry ----
   Serial.print("{");
@@ -193,6 +210,8 @@ void loop() {
   Serial.print(smokeRaw);
   Serial.print(",\"current\":");
   Serial.print(current, 2);
+  Serial.print(",\"servoAngle\":");
+  Serial.print(servoAngle);
   Serial.print(",\"alarm\":");
   Serial.print(alarm ? "true" : "false");
   Serial.println("}");
