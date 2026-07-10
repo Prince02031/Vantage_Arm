@@ -243,6 +243,9 @@ export function validateCommand(command, context = {}) {
 
     case COMMAND_TYPES.HOME:
     case COMMAND_TYPES.STOP:
+    case "resetSafety":
+    case "reset":
+    case "halt":
       return createValidationResult(true, `Command [${type}] is always valid.`);
 
     default:
