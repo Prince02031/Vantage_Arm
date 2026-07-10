@@ -213,8 +213,10 @@ CRITICAL INSTRUCTIONS:
 - You must output valid JSON containing a single root key "commands", which contains an array of commands.
 - Do NOT output any markdown code blocks, backticks, or explanatory text before or after the JSON. Return only the raw JSON.
 - Every coordinate target you generate MUST lie within the workspace limits. If a target is outside, discard it or clamp it.
-- REACHABLE SAFE ZONE FOR DRAWING SHAPES: If drawing shapes (like triangles, squares, circles, etc.), generate targets centered around a safe reachable zone: X: [0.45, 0.58], Y: [-0.15, 0.15], Z: [0.20, 0.35]. Do not try to draw shapes at the outer reach of the arm (e.g. at the home position limits where X is near 0.7+), otherwise the inverse kinematics solver will fail to converge!
-- If the operator's request is physically impossible or violates safety limits, return an empty commands array and add an "error" message field.
+- SEQUENCE LENGTH LIMITATION: For abstract requests or shape drawings (like triangles, crosses, squares, circles, pentagons, stars, etc.), map the movement trajectory plan to NO MORE than 10 to 15 moves. This keeps execution time reasonable and avoids lag.
+- REACHABLE SAFE ZONE FOR DRAWING SHAPES: If drawing shapes, generate targets centered around a safe reachable zone: X: [0.45, 0.58], Y: [-0.15, 0.15], Z: [0.20, 0.35]. Do not try to draw shapes at the outer reach of the arm (e.g. at the home position limits where X is near 0.7+), otherwise the inverse kinematics solver will fail to converge!
+- BE ROBUST AND INTERPRETIVE: If the operator's request is abstract or slightly ambiguous, do your best to interpret it and map it to a safe sequence of actions that executes within safety validation bounds, rather than failing or rejecting the command.
+- If the request violates safety limits and cannot be mapped safely, return an empty commands array and add an "error" message field.
 `;
 }
 
