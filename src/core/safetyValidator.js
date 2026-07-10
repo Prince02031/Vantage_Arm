@@ -234,6 +234,15 @@ export function validateCommand(command, context = {}) {
     case COMMAND_TYPES.RUN_PIN: {
       const pinCheck = validatePin(normalized.pin);
       if (!pinCheck.ok) return pinCheck;
+      if (context.keyConfig) {
+        for (let i = 0; i < normalized.pin.length; i++) {
+          const digit = normalized.pin[i];
+          const keyCheck = validateKey(digit, context.keyConfig);
+          if (!keyCheck.ok) {
+            return createValidationResult(false, `PIN digit '${digit}' failed validation: ${keyCheck.message}`);
+          }
+        }
+      }
       return createValidationResult(true, "RunPin sequence format is valid.");
     }
 

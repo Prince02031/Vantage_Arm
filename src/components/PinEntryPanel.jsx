@@ -1,11 +1,10 @@
 // src/components/PinEntryPanel.jsx
-// Phase B ships the panel shell + a RUN_PIN command dispatch. The full
-// pinRunner.js orchestration (hover / touch / verify / retract) is wired in
-// by Person 2's pipeline when RUN_PIN is selected. Here we just collect a
-// 6-digit PIN made of digits 1-6 and route it through the pipeline.
-import { useState } from 'react';
+// Phase D: Full autonomous PIN entry with live progress display.
+// Reads pinProgress from the robot store to show per-key results in real-time.
+import { useState, useEffect } from 'react';
 import { executeCommand } from '../core/motionPipeline.js';
 import { CommandTypes } from '../core/commandTypes.js';
+import { subscribeRobotState, getRobotState } from '../core/robotStore.js';
 
 const KEYS = ['1', '2', '3', '4', '5', '6'];
 
@@ -14,6 +13,14 @@ export default function PinEntryPanel() {
   const [running, setRunning] = useState(false);
   const [lastReport, setLastReport] = useState(null);
   const [inputError, setInputError] = useState('');
+  const [pinProgress, setPinProgress] = useState(() => getRobotState().pinProgress);
+
+  useEffect(() => {
+    const unsub = subscribeRobotState((state) => {
+      setPinProgress({ ...state.pinProgress });
+    });
+    return unsub;
+  }, []);
 
   const append = (digit) => {
     setInputError('');
@@ -47,11 +54,11 @@ export default function PinEntryPanel() {
       return;
     }
     setRunning(true);
-    setLastReport({ success: true, message: `Dispatching PIN ${pin}…` });
+    setLastReport({ success: true, message: `Dispatching PIN [${pin}]…` });
     try {
       const res = await executeCommand({
         type: CommandTypes.RUN_PIN,
-        payload: { pin },
+        pin,
         source: 'pin-panel'
       });
       // Pipeline returns a normalised result { ok, message }.
@@ -126,6 +133,52 @@ export default function PinEntryPanel() {
         </button>
       </div>
 
+      {running && (
+        <button
+          type="button"
+          className="btn btn-danger"
+          style={{ marginTop: '0.5rem', width: '100%' }}
+          onClick={() => executeCommand({ type: 'stop', source: 'pin-panel' })}
+        >
+          ⛔ Stop Sequence
+        </button>
+      )}
+
+      {/* Live per-key progress table */}
+      {pinProgress.results && pinProgress.results.length > 0 && (
+        <div className="pin-progress" style={{ marginTop: '0.75rem' }}>
+          <strong style={{ fontSize: '0.75rem', opacity: 0.8 }}>Progress ({pinProgress.pressed.length}/6 pressed)</strong>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+            {pinProgress.results.map((r, i) => (
+              <span
+                key={i}
+                title={`${r.message} (${r.errorM != null ? (r.errorM * 1000).toFixed(1) + 'mm' : 'n/a'})`}
+                style={{
+                  padding: '2px 7px',
+                  borderRadius: '4px',
+                  fontSize: '0.75rem',
+                  background: r.ok ? 'rgba(0,200,100,0.2)' : 'rgba(255,80,80,0.2)',
+                  border: `1px solid ${r.ok ? '#00c864' : '#ff5050'}`,
+                  color: r.ok ? '#00ff88' : '#ff6666'
+                }}
+              >
+                Key {r.key} {r.ok ? '✓' : '✗'}
+              </span>
+            ))}
+          </div>
+          {pinProgress.running && pinProgress.currentKey && (
+            <p style={{ fontSize: '0.7rem', opacity: 0.7, marginTop: '4px' }}>
+              ⟳ Pressing Key {pinProgress.currentKey} (digit {(pinProgress.currentIndex + 1)}/6)…
+            </p>
+          )}
+          {pinProgress.failed && pinProgress.failureReason && (
+            <p style={{ fontSize: '0.7rem', color: '#ff6666', marginTop: '4px' }}>
+              ✗ {pinProgress.failureReason}
+            </p>
+          )}
+        </div>
+      )}
+
       {lastReport && (
         <div className={`pin-report ${lastReport.success ? 'pin-report-ok' : 'pin-report-bad'}`}>
           <strong>{lastReport.success ? 'OK' : 'Failed'}</strong>
@@ -134,8 +187,8 @@ export default function PinEntryPanel() {
       )}
 
       <p className="pin-hint">
-        Phase C runs autonomous sequential key tapping for the 6-digit PIN via the 
-        <code> executeCommand </code> pipeline. Full multi-digit verification and sequence logging are fully automated.
+        Phase D: Autonomous sequential key tapping for a 6-digit PIN via <code>executeCommand</code>.
+        Each key press performs approach → touch → verify tolerance → retreat.
       </p>
     </section>
   );
