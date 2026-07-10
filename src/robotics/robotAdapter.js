@@ -40,10 +40,35 @@ export function createRobotAdapter({ robot, discovery, keyMeshes, targetMarker }
 
         /**
          * Movable joint descriptors from joint discovery.
-         * Returns [] before robot loads.
+         * Returns custom array with string-coerced entries for backwards compatibility.
          */
         getMovableJoints() {
-            return discovery?.movableJoints ?? [];
+            if (!discovery || !discovery.movableJoints) {
+                const list = [];
+                list.includes = () => false;
+                list.indexOf = () => -1;
+                return list;
+            }
+            const list = discovery.movableJoints.map(j => {
+                return {
+                    name: j.name,
+                    type: j.type,
+                    axis: j.axis || null,
+                    lower: j.limits?.lower !== undefined ? j.limits.lower : null,
+                    upper: j.limits?.upper !== undefined ? j.limits.upper : null,
+                    toString() { return this.name; },
+                    valueOf() { return this.name; }
+                };
+            });
+            list.includes = function(searchElement) {
+                const searchStr = String(searchElement);
+                return this.some(item => item.name === searchStr);
+            };
+            list.indexOf = function(searchElement) {
+                const searchStr = String(searchElement);
+                return this.findIndex(item => item.name === searchStr);
+            };
+            return list;
         },
 
         /**
@@ -51,7 +76,16 @@ export function createRobotAdapter({ robot, discovery, keyMeshes, targetMarker }
          * Returns {} if no limits parsed or robot not loaded.
          */
         getJointLimits() {
-            return limitsMap;
+            const result = {};
+            for (const [name, limitObj] of Object.entries(limitsMap)) {
+                result[name] = {
+                    lower: limitObj.lower !== undefined && limitObj.lower !== null ? limitObj.lower : null,
+                    upper: limitObj.upper !== undefined && limitObj.upper !== null ? limitObj.upper : null,
+                    min: limitObj.lower !== undefined && limitObj.lower !== null ? limitObj.lower : null,
+                    max: limitObj.upper !== undefined && limitObj.upper !== null ? limitObj.upper : null
+                };
+            }
+            return result;
         },
 
         // ── Live state ────────────────────────────────────────────────────
@@ -102,7 +136,10 @@ export function createRobotAdapter({ robot, discovery, keyMeshes, targetMarker }
          */
         updateTargetMarker(target) {
             if (!target || !targetMarker) return;
-            targetMarker.setPosition(target.x, target.y, target.z);
+            const x = typeof target.x === 'number' && Number.isFinite(target.x) ? target.x : 0;
+            const y = typeof target.y === 'number' && Number.isFinite(target.y) ? target.y : 0;
+            const z = typeof target.z === 'number' && Number.isFinite(target.z) ? target.z : 0;
+            targetMarker.setPosition(x, y, z);
         },
 
         /**

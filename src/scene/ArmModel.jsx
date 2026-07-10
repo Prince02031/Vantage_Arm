@@ -16,10 +16,13 @@ export function setOneJoint(robot, jointName, anglRad) {
     const joint = robot?.joints?.[jointName];
     if (!joint) return false;
 
-    // Clamp to joint limits if available
-    const lo = joint.limit?.lower ?? -Math.PI;
-    const hi = joint.limit?.upper ?? Math.PI;
-    const clamped = Math.max(lo, Math.min(hi, anglRad));
+    // Clamp to joint limits only if they are known/defined
+    let clamped = anglRad;
+    if (joint.limit) {
+        const lo = typeof joint.limit.lower === 'number' ? joint.limit.lower : -Math.PI * 2;
+        const hi = typeof joint.limit.upper === 'number' ? joint.limit.upper : Math.PI * 2;
+        clamped = Math.max(lo, Math.min(hi, anglRad));
+    }
 
     // urdf-loader v0.11 exposes setJointValue(value)
     if (typeof joint.setJointValue === 'function') {
@@ -47,6 +50,9 @@ export function setJointAngles(robot, angles) {
         } else {
             notFound.push(name);
         }
+    }
+    if (robot && typeof robot.updateMatrixWorld === 'function') {
+        robot.updateMatrixWorld(true);
     }
     return { set, notFound };
 }

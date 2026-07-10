@@ -69,47 +69,42 @@ base_link
 
 ---
 
-## Phase B — Robot Adapter Readiness
+## Phase C — Robot Adapter Hardening
 
-### Status: ✅ ADAPTER READY
+### Status: ✅ ADAPTER HARDENED (READY FOR IK & KEYPRESS)
 
-`src/robotics/robotAdapter.js` exports `createRobotAdapter(ctx)` which returns an object satisfying the full adapter interface required by the motion pipeline.
+`src/robotics/robotAdapter.js` exports `createRobotAdapter(ctx)` which provides full programmatic access to URDF properties, geometry updates, and keyboard/key panel indicators.
 
 ### Methods implemented
 
-| Method                     | Status | Notes |
-|----------------------------|--------|-------|
-| `getRobot()`               | ✅     | Returns raw urdf-loader robot object |
-| `getMovableJoints()`       | ✅     | Returns `DiscoveryResult.movableJoints` (7 joints) |
-| `getJointLimits()`         | ✅     | Returns map of name → `{lower, upper, effort, velocity}` from URDF |
-| `getJointAngles()`         | ✅     | Reads `joint.angle` from live urdf-loader state |
-| `setJointAngles(angles)`   | ✅     | Calls `joint.setJointValue(clamped)` per joint |
-| `getEndEffectorPosition()` | ✅     | Reads world position of `stylus_tip` link via `THREE.Object3D.getWorldPosition` |
-| `updateTargetMarker(pos)`  | ✅     | Moves the cyan ring/sphere marker in 3D space |
-| `flashKey(key)`            | ✅     | Emissive pulse on the key mesh matching digit label `"1"`–`"6"` |
+| Method                     | Status | Description / Behavior |
+|----------------------------|--------|------------------------|
+| `getRobot()`               | ✅     | Returns raw urdf-loader robot object. |
+| `getMovableJoints()`       | ✅     | Returns ordered movable joints (7 total) as string-compatible objects containing `name`, `type`, `axis`, `lower`, and `upper`. |
+| `getJointLimits()`         | ✅     | Returns map of name → `{lower, upper, min, max}` from URDF. |
+| `getJointAngles()`         | ✅     | Reads live `joint.angle` values from urdf-loader. |
+| `setJointAngles(angles)`   | ✅     | Sets angles, clamps to limits if defined, and calls `updateMatrixWorld(true)` for immediate rendering. |
+| `getEndEffectorPosition()` | ✅     | Reads exact world position of the `stylus_tip` link via matrix world transform. |
+| `updateTargetMarker(pos)`  | ✅     | Moves the cyan ring/sphere target marker safely in 3D space. |
+| `flashKey(key)`            | ✅     | Triggers emissive highlighting pulse on key boxes 1–6. |
 
-### Registration
+### Final Movable Joint Order (7 DOF)
+1. `joint_1` (revolute, Yaw)
+2. `joint_2` (revolute, Shoulder Pitch)
+3. `joint_3` (revolute, Elbow Pitch)
+4. `joint_4` (revolute, Forearm Roll)
+5. `joint_5` (revolute, Wrist Pitch)
+6. `joint_6` (revolute, Tool Roll)
+7. `stylus_pitch` (revolute, Stylus Pitch)
 
-`ThreeScene.jsx` calls `registerRobotAdapter(adapter)` after the URDF and key panel have loaded.
-`motionPipeline.js` stores the adapter and exposes `getRobotAdapter()` for Person 2.
+### Selected End-Effector Link
+* **Link:** `stylus_tip`
+* **Method:** `src/robotics/endEffector.js:getEndEffectorWorldPosition()` fetches the world transform matrices of `stylus_tip` (fallback is search pattern or robot base).
 
-### End-effector detection
-
-- **Detected link:** `stylus_tip`
-- **Method:** `src/robotics/endEffector.js:getEndEffectorWorldPosition()` tries `stylus_tip` first, falls back by pattern, then origin.
-- **Limitation:** Position is kinematic (FK), not physics-based. Until an IK solver is wired, the arm stays in its default pose.
-
-### 6-Key panel
-
-- Loaded at runtime via `fetch('/config/key.config.json')` — coordinates are **never hardcoded**.
-- Digit labels 1–6 rendered as canvas textures on the top faces of each key box.
-- `flashKey(keyLabel)` triggers an emissive pulse on the corresponding mesh.
-
-### Known blockers / limitations
-
-1. **No IK solver yet** — `setJointAngles` moves joints but no inverse kinematics is available yet (Person 2 scope). FK-only.
-2. **stylus_pitch axis** — joint 7 uses Y axis (same family as J2/J3/J5), not Z. IK solver must account for this.
-3. **Orientation control** — `getEndEffectorPosition` returns position only; full 6-DOF pose (quaternion) not yet exposed. Extend if needed.
+### Known blockers / limitations for IK
+1. **Redundant pitch DOF**: The presence of four pitch axes (`joint_2`, `joint_3`, `joint_5`, `stylus_pitch`) means the solver must handle multiple kinematic solutions and avoid singularities.
+2. **Coordinate boundaries**: The physical limits of `joint_2`, `joint_3`, `joint_5`, and `stylus_pitch` are relatively narrow (approx. $\pm 120^\circ$). If coordinates require extreme angles, the solver will clamp and fail to reach the target accurately.
+3. **No orientation constraint in main IK**: Currently, the position-only IK solvers only compute X, Y, Z convergence, leaving orientation of the stylus unconstrained.
 
 ---
 
