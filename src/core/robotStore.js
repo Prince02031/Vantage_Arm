@@ -169,7 +169,7 @@ export function addStatusLog(entry) {
     id: entry.id || String(Date.now()) + Math.random().toString(36).substring(2, 7),
     level: entry.level || "info",
     message: String(entry.message),
-    timestamp: entry.timestamp || new Date().toLocaleTimeString(),
+    timestamp: entry.timestamp || Date.now(),
     source: entry.source || "unknown",
     commandType: entry.commandType || null
   };
