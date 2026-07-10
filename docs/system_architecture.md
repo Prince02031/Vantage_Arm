@@ -14,57 +14,56 @@ This diagram illustrates the step-by-step lifecycle of a command as it flows fro
 ```mermaid
 flowchart TD
     %% Input Layer
-    subgraph Inputs ["1. Input Methods"]
-        UI_Slider["Dashboard Sliders"]
-        UI_Joy["GUI Joystick (Jog)"]
-        UI_Keys["Dashboard Key Press"]
-        Kbd["Keyboard (WASD / Arrows)"]
-        Voice["Voice Command Parser"]
-        Pin["Autonomous PIN Runner"]
+    subgraph Inputs ["Inputs"]
+        Joy["Joystick Jogging\n(Manual GUI step offset jog)"]
+        Kbd["Keyboard Jogging\n(WASD / Arrows jogging controls)"]
+        Sliders["Sliders Panel\n(Direct joint angle GUI sliders)"]
+        Pin["PIN Entry Panel\n(Auto approach-touch-retreat run)"]
+        Voice["Voice Command\n(Deterministic keyword parsing)"]
     end
 
-    %% Command Creation
-    Inputs -->|Generates Command| CmdStruct["Structured Command\n(commandTypes.js)"]
-
-    %% Pipeline Processing
-    subgraph Pipeline ["2. Shared Motion Pipeline (motionPipeline.js)"]
-        Entry["executeCommand(command)"]
-        SafetyGate{"safetyValidator.js\n(Limits Check)"}
-        IK_Gate{"Is Cartesian Target?"}
-        IK_Solve["ikSolver.js\n(Numerical GD / CCD)"]
-        Traj_Gen["trajectoryRunner.js\n(Joint Trajectory)"]
-    end
-
-    CmdStruct --> Entry
-    Entry --> SafetyGate
+    %% Unified Command Broker
+    Broker["Unified Command Broker\nmotionPipeline.js: executeCommand(command)"]
     
-    %% Safety Outcomes
-    SafetyGate -->|Invalid / Limit Exceeded| TripSafety["Trip Safety State\n(Store: safety.lastValid = false)"]
-    SafetyGate -->|Valid| PassSafety["Clear Safety Latch\n(Store: safety.lastValid = true)"]
+    Joy --> Broker
+    Kbd --> Broker
+    Sliders --> Broker
+    Pin --> Broker
+    Voice --> Broker
+
+    %% Safety & Boundary Validator
+    Safety["Safety & Boundary Validator\nsafetyValidator.js: validateCommand()"]
+    Broker --> Safety
+
+    %% Solver / Engine Split
+    IK["Inverse Kinematics (IK) Solver\nikSolver.js: solveIK(target, adapter)"]
+    FK["Forward Kinematics (FK) Engine\nikSolver.js: computeForwardKinematics()"]
     
-    TripSafety --> LogError["Log Error to Status Log"]
-    PassSafety --> IK_Gate
-
-    %% Kinematic Layer
-    IK_Gate -->|Yes| IK_Solve
-    IK_Gate -->|No (Joint Angle Command)| Traj_Gen
+    Safety --> IK
+    Safety --> FK
     
-    IK_Solve -->|IK Failed to Converge| LogError
-    IK_Solve -->|IK Solved| Traj_Gen
+    %% IK calls FK internally
+    IK -.->|Uses FK| FK
 
-    %% Execution Layer
-    subgraph Execution ["3. Model & UI Updates"]
-        Traj_Run["Run Trajectory\n(Interpolates over time)"]
-        Adapter["Robot Adapter\n(robotAdapter.js)"]
-        Store["Robot Store\n(robotStore.js)"]
-        Canvas["Three.js scene\n(ThreeScene.jsx)"]
-    end
+    %% Trajectory Runner
+    Traj["Trajectory Execution Runner\ntrajectoryRunner.js: runTrajectory()"]
+    IK --> Traj
+    FK --> Traj
 
-    Traj_Gen --> Traj_Run
-    Traj_Run -->|Iterative updates| Adapter
-    Adapter -->|Sets Joint Angles| Canvas
-    Canvas -->|Streaming feedback| Store
-    Store -->|Reactive bindings| UI_Display["Dashboard UI Displays"]
+    %% Output & Rendering
+    Adapter["Robot Scene Adapter\nrobotAdapter.js: createRobotAdapter()"]
+    Scene["WebGL Visual Scene (Three.js)\nThreeScene.jsx"]
+    
+    Traj --> Adapter
+    Adapter --> Scene
+
+    %% Central State Store & Telemetry (robotStore.js)
+    Store[("Central State Store\nrobotStore.js")]
+    
+    Broker --> Store
+    Safety -.-> Store
+    Traj --> Store
+    Scene --> Store
 ```
 
 ---
@@ -126,12 +125,12 @@ graph TB
 | :--- | :--- | :--- | :--- |
 | `commandTypes.js` | Core | Defines the structural schemas, scales, and types for all commands. | Enforces strict validation shapes; prevents corrupted command payloads. |
 | `motionPipeline.js` | Core | Orchestrates execution, coordinates logging, and delegates actions. | Single entry point (`executeCommand`); manages trajectory execution and target markers. |
-| `safetyValidator.js` | Core | Validates commands against physical constraints *before* execution. | Prevents self-collision; monitors joint limits; verifies coordinates are inside workspace bounds. |
-| `robotStore.js` | Core | In-memory central state management. | Subscribable store; records active commands, safety states, and real-time joint positions. |
-| `trajectoryRunner.js` | Core | Computes and interpolates paths between poses. | Generates cubic/linear joint profiles; handles smooth transition steps over time. |
+| `safetyValidator.js` | Core | Validates commands against physical constraints via `validateCommand()`. | Checks workspace Cartesian bounds (cylinder/floor) and joint limits (min/max/lower/upper). |
+| `robotStore.js` | Core | In-memory central state management (`robotStore.js`). | Subscribable active telemetry store; records active commands, safety states, and real-time joint positions. |
+| `trajectoryRunner.js` | Core | Computes and interpolates paths between poses via `runTrajectory()`. | Interpolates joint values dynamically via requestAnimationFrame with easeInOutCubic. |
 | `pinRunner.js` | Core | Coordinates autonomous PIN sequences. | Translates 6-digit sequence to individual key movements (approach $\to$ touch $\to$ retreat). |
-| `ikSolver.js` | Robotics | Translates $(x, y, z)$ Cartesian targets into joint angles. | Two-stage solver (Numerical Gradient Descent + CCD Fallback) with a **singularity perturbation retry loop**. |
-| `robotAdapter.js` | Robotics | Bridges the motion pipeline with the 3D visual simulation. | Provides setter/getter wrappers for joint states, end-effector position, and key visual states. |
+| `ikSolver.js` | Robotics | Resolves kinematics equations for the 6-DOF arm. | Houses both the Inverse Kinematics solver (`solveIK` with GD + CCD and perturbation retries) and the Forward Kinematics engine (`computeForwardKinematics`). |
+| `robotAdapter.js` | Robotics | Bridges the motion pipeline with the 3D visual simulation via `createRobotAdapter()`. | Reads joint angles, calculates world transforms, and handles target/hit key flashes. |
 | `voiceCommandParser.js`| Controls | Parses text/speech inputs into structured commands. | Handles digit-word replacement, trailing punctuation removal, and degree symbol (`°`) conversion. |
 
 ---
