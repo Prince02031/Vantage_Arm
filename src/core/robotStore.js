@@ -1,81 +1,187 @@
 // src/core/robotStore.js
 
 /**
- * Global state store for the robot arm simulation.
- * Implements a simple subscriber pattern to allow React components (Person 3)
- * and the 3D scene (Person 1) to listen for updates without external dependencies.
+ * Initial state schema for the Vantage Arm.
+ * Represents a comprehensive model of the robot's current physical,
+ * safety, mode, and execution parameters.
  */
-
-// Initial state schema
 let state = {
-  // Current 6 joint angles in radians
-  jointAngles: [0, 0, 0, 0, 0, 0],
-
-  // Current end-effector position in meters (calculated via FK)
-  eePosition: { x: 0.5, y: 0.0, z: 0.05 },
-
-  // Target end-effector position in meters (controlled by manual/voice inputs)
-  targetPosition: { x: 0.5, y: 0.0, z: 0.05 },
-
-  // System safety state
+  jointAngles: {}, // e.g., { joint_1: 0.0, joint_2: 0.0, ... }
+  movableJoints: [], // Array of names, e.g., ['joint_1', 'joint_2', ...]
+  jointLimits: {}, // e.g., { joint_1: { min: -3.14, max: 3.14 }, ... }
+  endEffectorPosition: { x: 0, y: 0, z: 0 },
+  targetPosition: null, // target coordinates { x, y, z }
+  activeCommand: null, // currently executing command object
+  isMoving: false,
+  mode: "idle", // 'idle', 'manual', 'jogging', 'autonomous', 'halted'
+  pinProgress: {
+    pin: "",
+    currentIndex: 0,
+    pressed: [],
+    failed: false,
+    complete: false
+  },
   safety: {
-    tripped: false,
-    message: null,
-    violationCount: 0
+    lastValid: true,
+    lastMessage: "Ready"
   },
-
-  // Motion controller state
-  motion: {
-    isMoving: false,
-    activeCommandSource: null, // 'keyboard', 'joystick', 'voice', 'autonomous'
-    activeTrajectoryPath: []    // Array of {x, y, z} points currently being traversed
-  },
-
-  // Log system containing logs: { id, timestamp, type, message }
-  logs: []
+  statusLog: []
 };
 
+// Internal module state
+let robotAdapter = null;
+let activeTrajectory = null;
+let stopRequested = false;
+
+// Set of active subscribers
 const listeners = new Set();
 
-export const robotStore = {
-  /**
-   * Retrieve the current state.
-   */
-  getState() {
-    return state;
-  },
+/**
+ * Retrieves a read-only copy of the current state.
+ * @returns {Object} Current state object
+ */
+export function getRobotState() {
+  // Return a shallow copy of the state structure
+  return {
+    ...state,
+    endEffectorPosition: { ...state.endEffectorPosition },
+    targetPosition: state.targetPosition ? { ...state.targetPosition } : null,
+    activeCommand: state.activeCommand ? { ...state.activeCommand } : null,
+    pinProgress: { ...state.pinProgress, pressed: [...state.pinProgress.pressed] },
+    safety: { ...state.safety },
+    statusLog: [...state.statusLog]
+  };
+}
 
-  /**
-   * Subscribe to state changes.
-   * @param {Function} listener callback receiving the new state
-   * @returns {Function} unsubscribe function
-   */
-  subscribe(listener) {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
-  },
+/**
+ * Updates the robot store state. Merges partial updates.
+ * Deep merges safety, pinProgress structures if provided.
+ * @param {Object} partial - Partial state updates
+ */
+export function setRobotState(partial) {
+  if (!partial || typeof partial !== "object") return;
 
-  /**
-   * Update specific parts of the state and notify listeners.
-   * @param {Object|Function} nextState
-   */
-  setState(nextState) {
-    const changes = typeof nextState === 'function' ? nextState(state) : nextState;
-    state = { ...state, ...changes };
-    listeners.forEach((listener) => listener(state));
-  },
+  const nextState = { ...state, ...partial };
 
-  /**
-   * Reset store to initial defaults.
-   */
-  reset() {
-    this.setState({
-      jointAngles: [0, 0, 0, 0, 0, 0],
-      eePosition: { x: 0.5, y: 0.0, z: 0.05 },
-      targetPosition: { x: 0.5, y: 0.0, z: 0.05 },
-      safety: { tripped: false, message: null, violationCount: 0 },
-      motion: { isMoving: false, activeCommandSource: null, activeTrajectoryPath: [] },
-      logs: []
-    });
+  // Handle nested object updates safely
+  if (partial.pinProgress) {
+    nextState.pinProgress = { ...state.pinProgress, ...partial.pinProgress };
   }
-};
+  if (partial.safety) {
+    nextState.safety = { ...state.safety, ...partial.safety };
+  }
+
+  state = nextState;
+  
+  // Notify listeners
+  listeners.forEach(listener => {
+    try {
+      listener(getRobotState());
+    } catch (err) {
+      console.error("Error in robotStore subscriber callback:", err);
+    }
+  });
+}
+
+/**
+ * Subscribe to state changes.
+ * @param {Function} listener - Callback function receiving the updated state
+ * @returns {Function} Unsubscribe function
+ */
+export function subscribeRobotState(listener) {
+  if (typeof listener !== "function") {
+    throw new Error("robotStore listener must be a function.");
+  }
+  listeners.add(listener);
+  
+  // Return unsubscribe handler
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/**
+ * Adds an entry to the status log and notifies subscribers.
+ * @param {Object} entry - Log entry details
+ * @param {string} [entry.level="info"] - 'info', 'success', 'warning', 'error'
+ * @param {string} entry.message - Log content
+ * @param {string} [entry.source="unknown"] - Origin of log
+ * @param {string} [entry.commandType=null] - Accompanying command type
+ */
+export function addStatusLog(entry) {
+  if (!entry || !entry.message) return;
+
+  const newLog = {
+    id: entry.id || String(Date.now()) + Math.random().toString(36).substring(2, 7),
+    level: entry.level || "info",
+    message: String(entry.message),
+    timestamp: entry.timestamp || new Date().toLocaleTimeString(),
+    source: entry.source || "unknown",
+    commandType: entry.commandType || null
+  };
+
+  setRobotState({
+    statusLog: [...state.statusLog, newLog]
+  });
+}
+
+/**
+ * Clears the status logs array.
+ */
+export function clearStatusLog() {
+  setRobotState({ statusLog: [] });
+}
+
+/**
+ * Registers the physical/visual robot simulation adapter (Three.js integration wrapper).
+ * @param {Object} adapter - Interface referencing Three.js objects
+ */
+export function setRobotAdapter(adapter) {
+  robotAdapter = adapter;
+}
+
+/**
+ * Retrieves the currently registered robot adapter.
+ * @returns {Object|null} The registered adapter interface
+ */
+export function getRobotAdapter() {
+  return robotAdapter;
+}
+
+/**
+ * Stores the active trajectory object (useful for interpolation checks or cancels).
+ * @param {Object|null} trajectory - Active trajectory details
+ */
+export function setActiveTrajectory(trajectory) {
+  activeTrajectory = trajectory;
+}
+
+/**
+ * Retrieves the currently active trajectory.
+ * @returns {Object|null} Current trajectory object
+ */
+export function getActiveTrajectory() {
+  return activeTrajectory;
+}
+
+/**
+ * Triggers a stop request (stops joint movements or pin sequences immediately).
+ */
+export function requestStop() {
+  stopRequested = true;
+}
+
+/**
+ * Resets the stop request state.
+ */
+export function clearStopRequest() {
+  stopRequested = false;
+}
+
+/**
+ * Checks if a stop has been requested.
+ * @returns {boolean} True if stop is active
+ */
+export function isStopRequested() {
+  return stopRequested;
+}
