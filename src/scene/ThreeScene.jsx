@@ -12,6 +12,7 @@ import { getEndEffectorWorldPosition } from '../robotics/endEffector.js';
 import { createRobotAdapter } from '../robotics/robotAdapter.js';
 import { registerRobotAdapter } from '../core/motionPipeline.js';
 import { getJointAngles } from './ArmModel.jsx';
+import { setRobotState } from '../core/robotStore.js';
 
 const URDF_URL = '/robot/6_dof_arm.urdf';
 
@@ -130,11 +131,19 @@ export default function ThreeScene({ onStateUpdate }) {
           tipLink.getWorldPosition(_pos);
           stylusMarker.position.copy(_pos);
         }
-        // Stream live state to Dashboard
+        // Sync state directly to robotStore
+        const currentAngles = getJointAngles(robotRef);
+        const currentEE = getEndEffectorWorldPosition(robotRef);
+        if (currentAngles && currentEE) {
+          setRobotState({
+            jointAngles: currentAngles,
+            endEffectorPosition: currentEE
+          });
+        }
         if (onStateUpdate) {
           onStateUpdate({
-            joints: getJointAngles(robotRef),
-            eef: getEndEffectorWorldPosition(robotRef),
+            joints: currentAngles,
+            eef: currentEE,
           });
         }
       }

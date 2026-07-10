@@ -1,47 +1,37 @@
-// JointPanel.jsx
-// Compact read-only joint-state panel (for embedding inside the scene overlay).
-// The parent passes `joints` — a map of joint name → angle in radians.
-import React from 'react';
+// src/components/JointPanel.jsx
+// Read-only display of the current joint angles and end-effector pose.
+// Phase A store only ships jointAngles[0..5] = 0. Phase C will populate the
+// real values. The component renders 6 placeholders either way.
+import { useRobotStore } from '../utils/useRobotStore.js';
+import { formatAngle, formatCoord } from '../utils/formatters.js';
 
-const JOINT_META = [
-    { key: 'joint_1', short: 'J1', label: 'Base Yaw' },
-    { key: 'joint_2', short: 'J2', label: 'Shoulder' },
-    { key: 'joint_3', short: 'J3', label: 'Elbow' },
-    { key: 'joint_4', short: 'J4', label: 'Forearm Roll' },
-    { key: 'joint_5', short: 'J5', label: 'Wrist Pitch' },
-    { key: 'joint_6', short: 'J6', label: 'Tool Roll' },
-    { key: 'stylus_pitch', short: 'J7', label: 'Stylus Pitch' },
-];
+const JOINT_LABELS = ['Base', 'Shoulder', 'Elbow', 'Wrist Roll', 'Wrist Pitch', 'Wrist Yaw'];
 
-const RAD2DEG = 180 / Math.PI;
+export default function JointPanel() {
+  const { jointAngles, eePosition } = useRobotStore();
+  const angles = Array.from({ length: 6 }, (_, i) => jointAngles?.[i] ?? 0);
 
-function bar(v, lo = -Math.PI, hi = Math.PI) {
-    if (v == null) return 0;
-    const pct = ((v - lo) / (hi - lo)) * 100;
-    return Math.max(0, Math.min(100, pct));
-}
-
-export default function JointPanel({ joints = {}, limits = {} }) {
-    return (
-        <div className="joint-panel">
-            {JOINT_META.map(({ key, short, label }) => {
-                const rad = joints[key] ?? 0;
-                const deg = (rad * RAD2DEG).toFixed(1);
-                const lim = limits[key];
-                const lo = lim?.lower ?? -Math.PI;
-                const hi = lim?.upper ?? Math.PI;
-                const pct = bar(rad, lo, hi);
-                return (
-                    <div key={key} className="jp-row">
-                        <span className="jp-short">{short}</span>
-                        <span className="jp-label">{label}</span>
-                        <div className="jp-bar-wrap">
-                            <div className="jp-bar-fill" style={{ width: `${pct}%` }} />
-                        </div>
-                        <span className="jp-val">{deg}°</span>
-                    </div>
-                );
-            })}
+  return (
+    <section className="joint-panel" aria-label="Joint state">
+      <header className="joint-panel-header">
+        <h3>Joint State</h3>
+      </header>
+      <div className="joint-grid">
+        {angles.map((q, i) => (
+          <div key={i} className="joint-card">
+            <div className="joint-label">J{i + 1} · {JOINT_LABELS[i]}</div>
+            <div className="joint-value">{formatAngle(q)}</div>
+          </div>
+        ))}
+      </div>
+      <div className="ee-readout">
+        <h4>End-Effector Pose</h4>
+        <div className="ee-coords">
+          <span>{formatCoord('X', eePosition?.x)}</span>
+          <span>{formatCoord('Y', eePosition?.y)}</span>
+          <span>{formatCoord('Z', eePosition?.z)}</span>
         </div>
-    );
+      </div>
+    </section>
+  );
 }

@@ -43,14 +43,37 @@ const listeners = new Set();
  */
 export function getRobotState() {
   // Return a shallow copy of the state structure
+  const jointAnglesCopy = { ...state.jointAngles };
+  // Add numerical indices for Person 3's UI compatibility:
+  const jointNames = ['joint_1', 'joint_2', 'joint_3', 'joint_4', 'joint_5', 'joint_6'];
+  jointNames.forEach((name, idx) => {
+    if (name in jointAnglesCopy) {
+      jointAnglesCopy[idx] = jointAnglesCopy[name];
+    }
+  });
+
   return {
     ...state,
+    jointAngles: jointAnglesCopy,
     endEffectorPosition: { ...state.endEffectorPosition },
     targetPosition: state.targetPosition ? { ...state.targetPosition } : null,
     activeCommand: state.activeCommand ? { ...state.activeCommand } : null,
     pinProgress: { ...state.pinProgress, pressed: [...state.pinProgress.pressed] },
-    safety: { ...state.safety },
-    statusLog: [...state.statusLog]
+    safety: { 
+      ...state.safety,
+      tripped: !state.safety.lastValid,
+      message: state.safety.lastMessage,
+      violationCount: state.safety.violationCount || 0
+    },
+    statusLog: [...state.statusLog],
+    
+    // Compatibility aliases:
+    logs: [...state.statusLog],
+    eePosition: { ...state.endEffectorPosition },
+    motion: {
+      isMoving: state.isMoving,
+      activeCommandSource: state.activeCommand ? state.activeCommand.source : 'idle'
+    }
   };
 }
 
@@ -61,6 +84,36 @@ export function getRobotState() {
  */
 export function setRobotState(partial) {
   if (!partial || typeof partial !== "object") return;
+
+  // Bidirectional sync for joint names vs indices
+  if (partial.jointAngles) {
+    const jointNames = ['joint_1', 'joint_2', 'joint_3', 'joint_4', 'joint_5', 'joint_6'];
+    const updatedAngles = { ...state.jointAngles, ...partial.jointAngles };
+    jointNames.forEach((name, idx) => {
+      if (idx in partial.jointAngles) {
+        updatedAngles[name] = partial.jointAngles[idx];
+      }
+      if (name in partial.jointAngles) {
+        updatedAngles[idx] = partial.jointAngles[name];
+      }
+    });
+    partial.jointAngles = updatedAngles;
+  }
+
+  // Bidirectional sync for safety
+  if (partial.safety) {
+    const nextSafety = { ...state.safety, ...partial.safety };
+    if ('tripped' in partial.safety) {
+      nextSafety.lastValid = !partial.safety.tripped;
+    }
+    if ('message' in partial.safety) {
+      nextSafety.lastMessage = partial.safety.message;
+    }
+    if (partial.safety.tripped && !state.safety.tripped) {
+      nextSafety.violationCount = (state.safety.violationCount || 0) + 1;
+    }
+    partial.safety = nextSafety;
+  }
 
   const nextState = { ...state, ...partial };
 
