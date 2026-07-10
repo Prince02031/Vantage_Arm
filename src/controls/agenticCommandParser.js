@@ -1,7 +1,7 @@
 // src/controls/agenticCommandParser.js
 import { CommandTypes, WORKSPACE_BOUNDS } from '../core/commandTypes.js';
 import { validateCommand } from '../core/safetyValidator.js';
-import { getRobotState } from '../core/robotStore.js';
+import { getRobotState, getRobotAdapter } from '../core/robotStore.js';
 
 /**
  * Extracts a JSON block from potentially text-wrapped model outputs (like markdown code blocks).
@@ -112,7 +112,53 @@ export function simulateLocalAgenticResponse(transcript, currentEE) {
     return points;
   }
 
-  // Case D: Hover over key sequence
+  // Case D: Draw a pentagon
+  if (norm.includes('pentagon')) {
+    const r = 0.08;
+    const points = [];
+    for (let i = 0; i <= 5; i++) {
+      const angle = (i * 2 * Math.PI) / 5 - Math.PI / 2; // Offset to start at top
+      points.push({
+        type: 'moveTo',
+        target: {
+          x: safeStart.x + r * Math.cos(angle),
+          y: safeStart.y + r * Math.sin(angle),
+          z: safeStart.z
+        }
+      });
+    }
+    return points;
+  }
+
+  // Case E: Draw a cross
+  if (norm.includes('cross')) {
+    return [
+      { type: 'moveTo', target: { x: safeStart.x - 0.08, y: safeStart.y, z: safeStart.z } },
+      { type: 'moveTo', target: { x: safeStart.x + 0.08, y: safeStart.y, z: safeStart.z } },
+      { type: 'moveTo', target: { x: safeStart.x, y: safeStart.y, z: safeStart.z } },
+      { type: 'moveTo', target: { x: safeStart.x, y: safeStart.y - 0.08, z: safeStart.z } },
+      { type: 'moveTo', target: { x: safeStart.x, y: safeStart.y + 0.08, z: safeStart.z } }
+    ];
+  }
+
+  // Case F: Rotate arm/base
+  if (norm.includes('rotate base') || norm.includes('rotate arm') || norm.includes('rotate your arm') || norm.includes('rotate')) {
+    let degrees = 30;
+    const degMatch = norm.match(/(\d+)\s*degree/);
+    if (degMatch) {
+      degrees = parseInt(degMatch[1], 10);
+    }
+    if (norm.includes('left') || norm.includes('counter') || norm.includes('minus') || norm.includes('negative')) {
+      degrees = -degrees;
+    }
+    const adapter = getRobotAdapter();
+    const baseJointName = adapter ? adapter.getBaseJointName() : 'joint_1';
+    return [
+      { type: 'rotateJoint', jointName: baseJointName, deltaDeg: degrees }
+    ];
+  }
+
+  // Case G: Hover over key sequence
   // e.g. "press keys 1 3 5" or "press key 2 then 4"
   const digitRegex = /\b(press|tap|keys)\s+([1-6\s,thenand]+)\b/;
   const match = norm.match(digitRegex);
@@ -123,7 +169,7 @@ export function simulateLocalAgenticResponse(transcript, currentEE) {
     }
   }
 
-  // Case E: Return to safe default zone
+  // Case H: Return to safe default zone
   if (norm.includes('safe zone') || norm.includes('safe position') || norm.includes('clearance')) {
     return [
       { type: 'moveTo', target: { x: 0.55, y: 0.0, z: 0.30 } }
