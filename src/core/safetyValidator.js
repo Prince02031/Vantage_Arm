@@ -75,6 +75,30 @@ export function validateWorkspace(target) {
 }
 
 /**
+ * Validates only the single axis being jogged against workspace bounds.
+ * Unlike validateWorkspace, this does NOT fail if OTHER axes are already
+ * outside bounds (e.g. home position may have X=0 which is outside the
+ * operational workspace, but we should still allow Z jogging to escape).
+ *
+ * @param {string} axis - The axis being jogged ('x', 'y', 'z')
+ * @param {number} targetValue - The resulting coordinate on that axis after the jog
+ * @returns {Object} ValidationResult
+ */
+export function validateJogAxis(axis, targetValue) {
+  const bounds = WORKSPACE_BOUNDS[axis];
+  if (!bounds) {
+    return createValidationResult(false, `Unknown jog axis: "${axis}".`);
+  }
+  if (targetValue < bounds.min || targetValue > bounds.max) {
+    return createValidationResult(
+      false,
+      `Jog would move ${axis.toUpperCase()} to ${targetValue.toFixed(3)}m, outside bounds [${bounds.min}m, ${bounds.max}m].`
+    );
+  }
+  return createValidationResult(true, `Jog axis ${axis.toUpperCase()} target is within bounds.`);
+}
+
+/**
  * Validates a PIN format.
  * 
  * @param {string} pin - 6-digit PIN comprised of keys 1-6
@@ -204,14 +228,12 @@ export function validateCommand(command, context = {}) {
         try {
           const currentPos = context.robotAdapter.getEndEffectorPosition();
           if (currentPos) {
-            const targetPos = {
-              x: currentPos.x + (axis === 'x' ? delta : 0),
-              y: currentPos.y + (axis === 'y' ? delta : 0),
-              z: currentPos.z + (axis === 'z' ? delta : 0)
-            };
-            const workspaceCheck = validateWorkspace(targetPos);
-            if (!workspaceCheck.ok) {
-              return createValidationResult(false, `Jog target outside bounds: ${workspaceCheck.message}`);
+            const axisTarget = currentPos[axis] + delta;
+            // Only check the axis being moved — home position may legally
+            // place other axes outside the operational workspace.
+            const axisCheck = validateJogAxis(axis, axisTarget);
+            if (!axisCheck.ok) {
+              return createValidationResult(false, `Jog target outside bounds: ${axisCheck.message}`);
             }
           }
         } catch (err) {}
@@ -234,6 +256,15 @@ export function validateCommand(command, context = {}) {
     case COMMAND_TYPES.RUN_PIN: {
       const pinCheck = validatePin(normalized.pin);
       if (!pinCheck.ok) return pinCheck;
+      if (context.keyConfig) {
+        for (let i = 0; i < normalized.pin.length; i++) {
+          const digit = normalized.pin[i];
+          const keyCheck = validateKey(digit, context.keyConfig);
+          if (!keyCheck.ok) {
+            return createValidationResult(false, `PIN digit '${digit}' failed validation: ${keyCheck.message}`);
+          }
+        }
+      }
       return createValidationResult(true, "RunPin sequence format is valid.");
     }
 

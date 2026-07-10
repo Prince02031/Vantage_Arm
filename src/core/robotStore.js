@@ -16,10 +16,14 @@ let state = {
   mode: "idle", // 'idle', 'manual', 'jogging', 'autonomous', 'halted'
   pinProgress: {
     pin: "",
-    currentIndex: 0,
+    currentIndex: -1,
+    currentKey: "",
     pressed: [],
+    results: [],
     failed: false,
-    complete: false
+    failureReason: "",
+    complete: false,
+    running: false
   },
   safety: {
     lastValid: true,
@@ -59,7 +63,11 @@ export function getRobotState() {
     endEffectorPosition: { ...state.endEffectorPosition },
     targetPosition: state.targetPosition ? { ...state.targetPosition } : null,
     activeCommand: state.activeCommand ? { ...state.activeCommand } : null,
-    pinProgress: { ...state.pinProgress, pressed: [...state.pinProgress.pressed] },
+    pinProgress: { 
+      ...state.pinProgress, 
+      pressed: [...state.pinProgress.pressed],
+      results: state.pinProgress.results ? state.pinProgress.results.map(r => ({ ...r })) : []
+    },
     safety: { 
       ...state.safety,
       tripped: !state.safety.lastValid,

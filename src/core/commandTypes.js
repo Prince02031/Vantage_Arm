@@ -97,13 +97,17 @@ export const TOUCH_TOLERANCE_M = 0.005;
 export const KEY_APPROACH_OFFSET_M = 0.05;
 
 /**
- * Conservative physical workspace boundaries in meters (relative to base frame).
+ * Physical workspace boundaries in meters (world frame, matching the URDF/Three.js scene).
+ * These are hard safety limits — generous enough for the full arm reach while
+ * preventing wildly out-of-range targets.
+ * NOTE: These are in world/scene coordinates, not base-relative coordinates.
+ * Measured from observed EE positions: home ≈ (0, 0, 1.5m).
  * @constant {Object}
  */
 export const WORKSPACE_BOUNDS = {
-  x: { min: 0.15, max: 0.75 },
-  y: { min: -0.35, max: 0.35 },
-  z: { min: 0.02, max: 0.75 }
+  x: { min: -1.2, max: 1.2 },
+  y: { min: -1.2, max: 1.2 },
+  z: { min:  0.0, max: 2.5 }
 };
 
 /**

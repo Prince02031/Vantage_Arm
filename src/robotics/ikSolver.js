@@ -67,8 +67,8 @@ export function estimateReachability(target, robotAdapter, options = {}) {
   
   const distance = Math.sqrt(target.x * target.x + target.y * target.y + target.z * target.z);
   
-  // Assume a default maximum physical reach of 0.85m unless specified otherwise
-  const maxReach = options.maxReach || 0.85;
+  // Assume a default maximum physical reach of 1.6m unless specified otherwise
+  const maxReach = options.maxReach || 1.6;
   const minReach = options.minReach || 0.10;
 
   return distance >= minReach && distance <= maxReach;
@@ -190,145 +190,173 @@ export function solveIK(target, robotAdapter, options = {}) {
 
   const { maxIterations, toleranceM, stepScale } = settings;
 
-  if (isAdapterReady) {
-    // === METHOD A: Gradient Descent using Visual Adapter ===
-    // Sync starting angles — joint items may be objects { name, type, ... } or raw strings
+  const attempts = [
+    { perturb: false },
+    { perturb: true, sign: 1 },
+    { perturb: true, sign: -1 }
+  ];
+
+  for (const attempt of attempts) {
+    solved = false;
+
+    // Reset/initialize solvedAngles map for this attempt
     adapterJoints.forEach(j => {
       const name = typeof j === 'string' ? j : j.name;
-      solvedAngles[name] = adapterAngles[name] !== undefined ? adapterAngles[name] : 0.0;
+      let angle = adapterAngles[name] !== undefined ? adapterAngles[name] : 0.0;
+      if (attempt.perturb) {
+        // Perturb the pitch joints (rotating around Y)
+        const pitchJoints = ["joint_2", "joint_3", "joint_5", "stylus_pitch"];
+        const idx = pitchJoints.indexOf(name);
+        if (idx !== -1) {
+          const factor = idx % 2 === 0 ? 1 : -1;
+          angle += attempt.sign * factor * 0.15;
+        }
+      }
+      solvedAngles[name] = angle;
     });
 
-    const getPositionForAngles = (angles) => {
-      robotAdapter.setJointAngles(angles);
-      const ee = robotAdapter.getEndEffectorPosition() || { x: 0, y: 0, z: 0 };
-      return new Vector3(ee.x, ee.y, ee.z);
-    };
+    if (isAdapterReady) {
+      // === METHOD A: Gradient Descent using Visual Adapter ===
+      const getPositionForAngles = (angles) => {
+        robotAdapter.setJointAngles(angles);
+        const ee = robotAdapter.getEndEffectorPosition() || { x: 0, y: 0, z: 0 };
+        return new Vector3(ee.x, ee.y, ee.z);
+      };
 
-    const delta = 0.0005; // tiny angle perturbation
-    const step = stepScale * 0.2; // optimization learning step
+      const delta = 0.0005; // tiny angle perturbation
+      const step = stepScale * 0.2; // optimization learning step
 
-    for (iterations = 0; iterations < maxIterations; iterations++) {
-      const currentEE = getPositionForAngles(solvedAngles);
-      currentErr = currentEE.distanceTo(targetVec);
+      for (let i = 0; i < maxIterations; i++) {
+        iterations++;
+        const currentEE = getPositionForAngles(solvedAngles);
+        currentErr = currentEE.distanceTo(targetVec);
 
-      if (currentErr <= toleranceM) {
-        solved = true;
-        break;
-      }
-
-      // Compute numerical gradient for each movable joint
-      const grad = {};
-      for (const j of adapterJoints) {
-        const jointName = typeof j === 'string' ? j : j.name;
-        const originalAngle = solvedAngles[jointName] || 0;
-
-        // Forward step
-        solvedAngles[jointName] = originalAngle + delta;
-        const eePlus = getPositionForAngles(solvedAngles);
-        const errPlus = eePlus.distanceTo(targetVec);
-
-        // Backward step
-        solvedAngles[jointName] = originalAngle - delta;
-        const eeMinus = getPositionForAngles(solvedAngles);
-        const errMinus = eeMinus.distanceTo(targetVec);
-
-        // Restore
-        solvedAngles[jointName] = originalAngle;
-
-        // Symmetric gradient
-        grad[jointName] = (errPlus - errMinus) / (2 * delta);
-      }
-
-      // Update angles along negative gradient direction
-      for (const j of adapterJoints) {
-        const jointName = typeof j === 'string' ? j : j.name;
-        const g = grad[jointName] || 0;
-        let nextAngle = (solvedAngles[jointName] || 0) - step * g;
-
-        // Respect limit boundaries
-        const limit = adapterLimits[jointName] || {};
-        const minVal = limit.min !== undefined ? limit.min : (limit.lower !== undefined ? limit.lower : -Math.PI);
-        const maxVal = limit.max !== undefined ? limit.max : (limit.upper !== undefined ? limit.upper : Math.PI);
-        if (typeof minVal === "number" && typeof maxVal === "number") {
-          nextAngle = Math.max(minVal, Math.min(maxVal, nextAngle));
+        if (currentErr <= toleranceM) {
+          solved = true;
+          break;
         }
 
-        solvedAngles[jointName] = nextAngle;
+        // Compute numerical gradient for each movable joint
+        const grad = {};
+        for (const j of adapterJoints) {
+          const jointName = typeof j === 'string' ? j : j.name;
+          const originalAngle = solvedAngles[jointName] || 0;
+
+          // Forward step
+          solvedAngles[jointName] = originalAngle + delta;
+          const eePlus = getPositionForAngles(solvedAngles);
+          const errPlus = eePlus.distanceTo(targetVec);
+
+          // Backward step
+          solvedAngles[jointName] = originalAngle - delta;
+          const eeMinus = getPositionForAngles(solvedAngles);
+          const errMinus = eeMinus.distanceTo(targetVec);
+
+          // Restore
+          solvedAngles[jointName] = originalAngle;
+
+          // Symmetric gradient
+          grad[jointName] = (errPlus - errMinus) / (2 * delta);
+        }
+
+        // Update angles along negative gradient direction
+        for (const j of adapterJoints) {
+          const jointName = typeof j === 'string' ? j : j.name;
+          const g = grad[jointName] || 0;
+          let nextAngle = (solvedAngles[jointName] || 0) - step * g;
+
+          // Respect limit boundaries
+          const limit = adapterLimits[jointName] || {};
+          const minVal = limit.min !== undefined ? limit.min : (limit.lower !== undefined ? limit.lower : -Math.PI);
+          const maxVal = limit.max !== undefined ? limit.max : (limit.upper !== undefined ? limit.upper : Math.PI);
+          if (typeof minVal === "number" && typeof maxVal === "number") {
+            nextAngle = Math.max(minVal, Math.min(maxVal, nextAngle));
+          }
+
+          solvedAngles[jointName] = nextAngle;
+        }
+      }
+
+      // Restore the original state of the robot so it doesn't glitch during optimization
+      robotAdapter.setJointAngles(initialAngles);
+    } else {
+      // === METHOD B: Analytical Model CCD Solver Fallback ===
+      for (let i = 0; i < maxIterations; i++) {
+        iterations++;
+        const fk = computeForwardKinematics(solvedAngles);
+        currentErr = fk.tip.distanceTo(targetVec);
+
+        if (currentErr <= toleranceM) {
+          solved = true;
+          break;
+        }
+
+        for (let j = KINEMATIC_CHAIN.length - 1; j >= 0; j--) {
+          const joint = KINEMATIC_CHAIN[j];
+          const jointName = joint.name;
+
+          if (!adapterJoints.includes(jointName)) {
+            continue;
+          }
+
+          const fkStep = computeForwardKinematics(solvedAngles);
+          const jointPos = fkStep.jointPositions[j];
+          const jointAxis = fkStep.jointAxes[j];
+          const currentTip = fkStep.tip;
+
+          const rTip = new Vector3().subVectors(currentTip, jointPos);
+          const rTarget = new Vector3().subVectors(targetVec, jointPos);
+
+          const rTipProj = rTip.clone().subVectors(rTip, jointAxis.clone().set(
+            jointAxis.x * rTip.dot(jointAxis),
+            jointAxis.y * rTip.dot(jointAxis),
+            jointAxis.z * rTip.dot(jointAxis)
+          ));
+          
+          const rTargetProj = rTarget.clone().subVectors(rTarget, jointAxis.clone().set(
+            jointAxis.x * rTarget.dot(jointAxis),
+            jointAxis.y * rTarget.dot(jointAxis),
+            jointAxis.z * rTarget.dot(jointAxis)
+          ));
+
+          if (rTipProj.length() < 0.0001 || rTargetProj.length() < 0.0001) {
+            continue;
+          }
+
+          rTipProj.normalize();
+          rTargetProj.normalize();
+
+          const cosAngle = rTipProj.dot(rTargetProj);
+          const sinAngleVec = new Vector3().crossVectors(rTipProj, rTargetProj);
+          const sinAngle = sinAngleVec.dot(jointAxis);
+          
+          const deltaTheta = Math.atan2(sinAngle, cosAngle);
+
+          solvedAngles[jointName] += deltaTheta * stepScale;
+
+          const limit = adapterLimits[jointName] || joint.limit;
+          solvedAngles[jointName] = Math.max(limit.min, Math.min(limit.max, solvedAngles[jointName]));
+        }
       }
     }
 
-    // Restore the original state of the robot so it doesn't glitch during optimization
-    robotAdapter.setJointAngles(initialAngles);
-  } else {
-    // === METHOD B: Analytical Model CCD Solver Fallback ===
-    // Sync starting angles
-    KINEMATIC_CHAIN.forEach(joint => {
-      solvedAngles[joint.name] = adapterAngles[joint.name] !== undefined ? adapterAngles[joint.name] : 0.0;
-    });
-
-    for (iterations = 0; iterations < maxIterations; iterations++) {
-      const fk = computeForwardKinematics(solvedAngles);
-      currentErr = fk.tip.distanceTo(targetVec);
-
-      if (currentErr <= toleranceM) {
-        solved = true;
-        break;
-      }
-
-      for (let j = KINEMATIC_CHAIN.length - 1; j >= 0; j--) {
-        const joint = KINEMATIC_CHAIN[j];
-        const jointName = joint.name;
-
-        if (!adapterJoints.includes(jointName)) {
-          continue;
-        }
-
-        const fkStep = computeForwardKinematics(solvedAngles);
-        const jointPos = fkStep.jointPositions[j];
-        const jointAxis = fkStep.jointAxes[j];
-        const currentTip = fkStep.tip;
-
-        const rTip = new Vector3().subVectors(currentTip, jointPos);
-        const rTarget = new Vector3().subVectors(targetVec, jointPos);
-
-        const rTipProj = rTip.clone().subVectors(rTip, jointAxis.clone().set(
-          jointAxis.x * rTip.dot(jointAxis),
-          jointAxis.y * rTip.dot(jointAxis),
-          jointAxis.z * rTip.dot(jointAxis)
-        ));
-        
-        const rTargetProj = rTarget.clone().subVectors(rTarget, jointAxis.clone().set(
-          jointAxis.x * rTarget.dot(jointAxis),
-          jointAxis.y * rTarget.dot(jointAxis),
-          jointAxis.z * rTarget.dot(jointAxis)
-        ));
-
-        if (rTipProj.length() < 0.0001 || rTargetProj.length() < 0.0001) {
-          continue;
-        }
-
-        rTipProj.normalize();
-        rTargetProj.normalize();
-
-        const cosAngle = rTipProj.dot(rTargetProj);
-        const sinAngleVec = new Vector3().crossVectors(rTipProj, rTargetProj);
-        const sinAngle = sinAngleVec.dot(jointAxis);
-        
-        const deltaTheta = Math.atan2(sinAngle, cosAngle);
-
-        solvedAngles[jointName] += deltaTheta * stepScale;
-
-        const limit = adapterLimits[jointName] || joint.limit;
-        solvedAngles[jointName] = Math.max(limit.min, Math.min(limit.max, solvedAngles[jointName]));
-      }
+    // Verify error and solved state at the end of this attempt
+    let finalErrCheck = currentErr;
+    if (isAdapterReady) {
+      robotAdapter.setJointAngles(solvedAngles);
+      const finalEE = robotAdapter.getEndEffectorPosition() || { x: 0, y: 0, z: 0 };
+      finalErrCheck = new Vector3(finalEE.x, finalEE.y, finalEE.z).distanceTo(targetVec);
+      robotAdapter.setJointAngles(initialAngles);
+    } else {
+      const finalFK = computeForwardKinematics(solvedAngles);
+      finalErrCheck = finalFK.tip.distanceTo(targetVec);
     }
-  }
 
-  // Final verification check
-  const finalFK = computeForwardKinematics(solvedAngles);
-  currentErr = finalFK.tip.distanceTo(targetVec);
-  if (currentErr <= toleranceM) {
-    solved = true;
+    if (finalErrCheck <= toleranceM) {
+      solved = true;
+      currentErr = finalErrCheck;
+      break;
+    }
   }
 
   if (solved) {

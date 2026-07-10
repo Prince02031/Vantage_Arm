@@ -1,6 +1,6 @@
 // src/core/motionPipeline.js
 import { COMMAND_TYPES, normalizeCommand } from './commandTypes.js';
-import { validateCommand, validateWorkspace } from './safetyValidator.js';
+import { validateCommand, validateWorkspace, validateJogAxis } from './safetyValidator.js';
 import { 
   getRobotState, 
   setRobotState, 
@@ -635,14 +635,17 @@ export async function executeValidatedCommand(command, context) {
         z: currentPos.z + (command.axis === 'z' ? command.delta : 0)
       };
 
-      // Validate target workspace coordinate bounds
-      const workspaceCheck = validateWorkspace(targetPos);
-      if (!workspaceCheck.ok) {
+      // Only validate the specific axis being jogged against its bounds.
+      // Using full validateWorkspace here would wrongly reject jogs when the
+      // arm home position places other axes (e.g. X=0) outside operational bounds.
+      const joggedAxisTarget = targetPos[command.axis];
+      const axisCheck = validateJogAxis(command.axis, joggedAxisTarget);
+      if (!axisCheck.ok) {
         result = { 
           ok: false, 
-          message: `Jog coordinate rejected: ${workspaceCheck.message}`, 
+          message: `Jog rejected: ${axisCheck.message}`, 
           command, 
-          data: workspaceCheck 
+          data: axisCheck 
         };
         break;
       }
@@ -702,89 +705,17 @@ export async function executeValidatedCommand(command, context) {
     }
 
     case COMMAND_TYPES.RUN_PIN: {
-      if (!adapter) {
-        const pinRes = runPin(command.pin, context);
-        result = {
-          ok: pinRes.ok,
-          message: pinRes.message,
-          command,
-          data: pinRes,
-          pendingImplementation: true
-        };
-        break;
-      }
-      const pinStr = String(command.pin);
-      const validation = validatePinAgainstConfig(pinStr, getKeyConfig());
-      if (!validation.ok) {
-        result = { ok: false, message: `RunPin rejected: ${validation.message}`, command, data: null };
-        break;
-      }
-
-      addStatusLog({
-        level: "info",
-        message: `Starting autonomous PIN sequence: [${pinStr}].`,
-        source,
-        commandType: type
+      const pinRes = await runPin(command.pin, {
+        ...context,
+        executePressKey: async (digit) => executePressKey(digit, context, command),
+        source
       });
-
-      const progress = {
-        pin: pinStr,
-        currentIndex: 0,
-        pressed: [],
-        failed: false,
-        complete: false
+      result = {
+        ok: pinRes.ok,
+        message: pinRes.message,
+        command,
+        data: pinRes.data || pinRes
       };
-      setRobotState({ pinProgress: progress });
-
-      let pinSuccess = true;
-      for (let i = 0; i < pinStr.length; i++) {
-        const digit = pinStr[i];
-        
-        // Check if a stop was requested mid-sequence
-        if (isStopRequested()) {
-          addStatusLog({
-            level: "warning",
-            message: `PIN entry aborted at index ${i} due to stop request.`,
-            source: "runPin"
-          });
-          progress.failed = true;
-          setRobotState({ pinProgress: { ...progress } });
-          pinSuccess = false;
-          break;
-        }
-
-        progress.currentIndex = i;
-        setRobotState({ pinProgress: { ...progress } });
-
-        const pressResult = await executePressKey(digit, context, command);
-        if (!pressResult.ok) {
-          addStatusLog({
-            level: "error",
-            message: `PIN entry failed at digit '${digit}' (index ${i}).`,
-            source: "runPin"
-          });
-          progress.failed = true;
-          setRobotState({ pinProgress: { ...progress } });
-          pinSuccess = false;
-          break;
-        }
-
-        progress.pressed.push(digit);
-        setRobotState({ pinProgress: { ...progress } });
-      }
-
-      if (pinSuccess && !progress.failed) {
-        progress.complete = true;
-        setRobotState({ pinProgress: { ...progress } });
-        addStatusLog({
-          level: "success",
-          message: `Autonomous PIN entry [${pinStr}] completed successfully.`,
-          source
-        });
-        result = { ok: true, message: `PIN sequence [${pinStr}] executed successfully.`, command, data: progress };
-      } else {
-        result = { ok: false, message: `PIN sequence execution failed or was aborted.`, command, data: progress };
-      }
       break;
     }
 
