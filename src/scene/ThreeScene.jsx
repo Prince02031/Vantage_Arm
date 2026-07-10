@@ -10,7 +10,7 @@ import { loadAndBuildKeyPanel } from './KeyPanel.jsx';
 import { createTargetMarker } from './TargetMarker.jsx';
 import { getEndEffectorWorldPosition } from '../robotics/endEffector.js';
 import { createRobotAdapter } from '../robotics/robotAdapter.js';
-import { registerRobotAdapter } from '../core/motionPipeline.js';
+import { registerRobotAdapter, setKeyConfig } from '../core/motionPipeline.js';
 import { getJointAngles } from './ArmModel.jsx';
 import { setRobotState } from '../core/robotStore.js';
 
@@ -186,6 +186,7 @@ export default function ThreeScene({ onStateUpdate }) {
           if (!cancelled) {
             scene.add(kp.group);
             keyMeshes = kp.keyMeshes;
+            setKeyConfig(kp.config);
             // Widen camera to include panel
             const kpBox = new THREE.Box3().setFromObject(kp.group);
             const combined = new THREE.Box3().copy(box).union(kpBox);

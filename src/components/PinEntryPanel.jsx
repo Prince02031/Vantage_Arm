@@ -54,8 +54,11 @@ export default function PinEntryPanel() {
         payload: { pin },
         source: 'pin-panel'
       });
-      // Pipeline returns a normalised result { success, message }.
-      setLastReport(res && typeof res === 'object' ? res : { success: true, message: 'PIN dispatched.' });
+      // Pipeline returns a normalised result { ok, message }.
+      const mappedRes = res && typeof res === 'object' 
+        ? { success: res.ok, message: res.message }
+        : { success: true, message: 'PIN dispatched.' };
+      setLastReport(mappedRes);
     } catch (err) {
       setLastReport({ success: false, message: err?.message || 'PIN execution failed.' });
     } finally {

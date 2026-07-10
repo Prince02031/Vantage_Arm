@@ -192,8 +192,9 @@ export function solveIK(target, robotAdapter, options = {}) {
 
   if (isAdapterReady) {
     // === METHOD A: Gradient Descent using Visual Adapter ===
-    // Sync starting angles
-    adapterJoints.forEach(name => {
+    // Sync starting angles — joint items may be objects { name, type, ... } or raw strings
+    adapterJoints.forEach(j => {
+      const name = typeof j === 'string' ? j : j.name;
       solvedAngles[name] = adapterAngles[name] !== undefined ? adapterAngles[name] : 0.0;
     });
 
@@ -217,7 +218,8 @@ export function solveIK(target, robotAdapter, options = {}) {
 
       // Compute numerical gradient for each movable joint
       const grad = {};
-      for (const jointName of adapterJoints) {
+      for (const j of adapterJoints) {
+        const jointName = typeof j === 'string' ? j : j.name;
         const originalAngle = solvedAngles[jointName] || 0;
 
         // Forward step
@@ -238,14 +240,17 @@ export function solveIK(target, robotAdapter, options = {}) {
       }
 
       // Update angles along negative gradient direction
-      for (const jointName of adapterJoints) {
+      for (const j of adapterJoints) {
+        const jointName = typeof j === 'string' ? j : j.name;
         const g = grad[jointName] || 0;
         let nextAngle = (solvedAngles[jointName] || 0) - step * g;
 
         // Respect limit boundaries
-        const limit = adapterLimits[jointName] || { min: -Math.PI, max: Math.PI };
-        if (typeof limit.min === "number" && typeof limit.max === "number") {
-          nextAngle = Math.max(limit.min, Math.min(limit.max, nextAngle));
+        const limit = adapterLimits[jointName] || {};
+        const minVal = limit.min !== undefined ? limit.min : (limit.lower !== undefined ? limit.lower : -Math.PI);
+        const maxVal = limit.max !== undefined ? limit.max : (limit.upper !== undefined ? limit.upper : Math.PI);
+        if (typeof minVal === "number" && typeof maxVal === "number") {
+          nextAngle = Math.max(minVal, Math.min(maxVal, nextAngle));
         }
 
         solvedAngles[jointName] = nextAngle;

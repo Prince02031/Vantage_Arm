@@ -10,10 +10,10 @@ function deriveSystemState(safety, motion) {
 }
 
 export default function SafetyPanel() {
-  const { safety, motion } = useRobotStore();
+  const { safety, motion, lastKeyPressResult } = useRobotStore();
   const sys = deriveSystemState(safety, motion);
   const adapterStatus = {
-    name: 'motionPipeline (Phase A contracts)',
+    name: 'motionPipeline (Phase C)',
     available: typeof executeCommand === 'function',
     source: motion?.activeCommandSource || 'idle'
   };
@@ -43,6 +43,14 @@ export default function SafetyPanel() {
           <span className="safety-value">{safety?.violationCount ?? 0}</span>
         </div>
         <div className="safety-row">
+          <span className="safety-label">IK Status</span>
+          <span className={`safety-value ${safety?.ikSolved === false ? 'bad' : safety?.ikSolved === true ? 'ok' : ''}`}>
+            {safety?.ikSolved === true ? `Solved (err: ${safety?.ikError?.toFixed?.(4) ?? '?'}m)` 
+              : safety?.ikSolved === false ? 'Failed'
+              : 'Idle'}
+          </span>
+        </div>
+        <div className="safety-row">
           <span className="safety-label">Active source</span>
           <span className="safety-value">{motion?.activeCommandSource || 'idle'}</span>
         </div>
@@ -56,6 +64,14 @@ export default function SafetyPanel() {
             {adapterStatus.available ? 'yes' : 'no'}
           </span>
         </div>
+        {lastKeyPressResult && (
+          <div className="safety-row">
+            <span className="safety-label">Last Key Press</span>
+            <span className={`safety-value ${lastKeyPressResult.success ? 'ok' : 'bad'}`}>
+              Key [{lastKeyPressResult.key}] — {lastKeyPressResult.success ? 'OK' : 'MISS'} ({(lastKeyPressResult.errorM * 1000).toFixed(1)}mm)
+            </span>
+          </div>
+        )}
         <div className="safety-actions">
           <button type="button" className="btn btn-danger" onClick={handleHalt}>Emergency Halt</button>
           <button type="button" className="btn btn-secondary" onClick={handleReset}>Reset Safety</button>

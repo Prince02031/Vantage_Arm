@@ -26,7 +26,8 @@ let state = {
     lastMessage: "Ready",
     lastSafetyResult: null
   },
-  statusLog: []
+  statusLog: [],
+  lastKeyPressResult: null // { key, success, errorM, timestamp }
 };
 
 // Internal module state
@@ -73,7 +74,8 @@ export function getRobotState() {
     motion: {
       isMoving: state.isMoving,
       activeCommandSource: state.activeCommand ? state.activeCommand.source : 'idle'
-    }
+    },
+    lastKeyPressResult: state.lastKeyPressResult ? { ...state.lastKeyPressResult } : null
   };
 }
 

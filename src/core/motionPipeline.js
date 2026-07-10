@@ -17,7 +17,7 @@ import {
   cancelActiveTrajectory 
 } from './trajectoryRunner.js';
 import { solveIK } from '../robotics/ikSolver.js';
-import { pressKey, runPin } from './pinRunner.js';
+import { pressKey, runPin, buildKeyPressTargets, validatePinAgainstConfig } from './pinRunner.js';
 
 // Local module state for key coordinates config
 let localKeyConfig = null;
@@ -229,6 +229,215 @@ export async function executeCommand(command, options = {}) {
 }
 
 /**
+ * Shared helper to move the arm to a Cartesian target.
+ * Solves IK, updates target marker, runs trajectory, and logs final error.
+ * 
+ * @param {Object} target - Cartesian coordinate { x, y, z }
+ * @param {Object} adapter - Robot simulation adapter
+ * @param {string} source - Origin of command
+ * @param {string} type - Command type (e.g. 'moveTo', 'jog')
+ * @returns {Promise<Object>} Result containing ok, message, data
+ */
+export async function moveToTarget(target, adapter, source, type) {
+  if (!adapter) {
+    return { ok: false, message: "No robot simulation adapter registered.", data: null };
+  }
+
+  // Update target marker
+  if (typeof adapter.updateTargetMarker === "function") {
+    try {
+      adapter.updateTargetMarker(target);
+    } catch (err) {
+      console.error("Failed to update target marker:", err);
+    }
+  }
+
+  // Solve Inverse Kinematics
+  const ikResult = solveIK(target, adapter);
+  
+  // Update state with IK status and target
+  setRobotState({
+    targetPosition: target,
+    safety: {
+      ...getRobotState().safety,
+      ikSolved: ikResult.solved,
+      ikError: ikResult.errorM
+    }
+  });
+
+  if (!ikResult.solved) {
+    return {
+      ok: false,
+      message: `IK solver failed to converge: ${ikResult.message}`,
+      data: ikResult
+    };
+  }
+
+  // Execute path movement
+  const startAngles = adapter.getJointAngles() || {};
+  const trajectory = createJointTrajectory(startAngles, ikResult.jointAngles, { durationMs: 1200 });
+
+  addStatusLog({
+    level: "info",
+    message: `Moving stylus to target (${target.x.toFixed(3)}, ${target.y.toFixed(3)}, ${target.z.toFixed(3)}). Solver error: ${ikResult.errorM?.toFixed(4)}m.`,
+    source,
+    commandType: type
+  });
+
+  const runnerRes = await runTrajectory(trajectory, adapter);
+
+  // Read current position after movement
+  const finalPos = adapter.getEndEffectorPosition() || { x: 0, y: 0, z: 0 };
+  const finalErr = Math.sqrt(
+    Math.pow(finalPos.x - target.x, 2) +
+    Math.pow(finalPos.y - target.y, 2) +
+    Math.pow(finalPos.z - target.z, 2)
+  );
+
+  addStatusLog({
+    level: runnerRes.ok ? "success" : "error",
+    message: `Move completed. Final distance error: ${finalErr.toFixed(4)}m.`,
+    source,
+    commandType: type
+  });
+
+  if (runnerRes.ok) {
+    setRobotState({
+      endEffectorPosition: finalPos
+    });
+  }
+
+  return {
+    ok: runnerRes.ok,
+    message: runnerRes.ok ? `Trajectory executed successfully. Error: ${finalErr.toFixed(4)}m.` : runnerRes.message,
+    data: { runnerRes, finalErr, jointAngles: ikResult.jointAngles }
+  };
+}
+
+/**
+ * Executes a full key press movement sequence (approach -> touch -> flash -> retreat).
+ * 
+ * @param {string} key - The digit label "1"-"6"
+ * @param {Object} context - Pipeline context containing adapter and config
+ * @param {Object} command - Original command details
+ * @returns {Promise<Object>} Execution result
+ */
+export async function executePressKey(key, context, command) {
+  const adapter = context.robotAdapter;
+  if (!adapter) {
+    return { ok: false, message: "PressKey rejected: No robot simulation adapter registered.", command, data: null };
+  }
+
+  // Load key configuration
+  const keyConfig = getKeyConfig();
+  if (!keyConfig) {
+    return { ok: false, message: "PressKey rejected: Key configuration not loaded.", command, data: null };
+  }
+
+  const strKey = String(key);
+  let targets;
+  try {
+    targets = buildKeyPressTargets(strKey, keyConfig);
+  } catch (err) {
+    return { ok: false, message: `PressKey rejected: ${err.message}`, command, data: null };
+  }
+
+  const { approach, touch, retreat } = targets;
+
+  addStatusLog({
+    level: "info",
+    message: `Starting pressKey sequence for Key [${strKey}].`,
+    source: "pressKey",
+    commandType: COMMAND_TYPES.PRESS_KEY
+  });
+
+  // Step 1: Move to approach position
+  addStatusLog({
+    level: "info",
+    message: `Step 1/3: Moving to approach point above Key [${strKey}] at (${approach.x.toFixed(3)}, ${approach.y.toFixed(3)}, ${approach.z.toFixed(3)})...`,
+    source: "pressKey"
+  });
+  const approachRes = await moveToTarget(approach, adapter, "pressKey", COMMAND_TYPES.PRESS_KEY);
+  if (!approachRes.ok) {
+    return { ok: false, message: `PressKey failed at approach step: ${approachRes.message}`, command, data: approachRes.data };
+  }
+
+  // Step 2: Move to touch position
+  addStatusLog({
+    level: "info",
+    message: `Step 2/3: Moving to touch point on Key [${strKey}] at (${touch.x.toFixed(3)}, ${touch.y.toFixed(3)}, ${touch.z.toFixed(3)})...`,
+    source: "pressKey"
+  });
+  const touchRes = await moveToTarget(touch, adapter, "pressKey", COMMAND_TYPES.PRESS_KEY);
+  if (!touchRes.ok) {
+    // Attempt to retreat anyway to be safe
+    await moveToTarget(retreat, adapter, "pressKey", COMMAND_TYPES.PRESS_KEY);
+    return { ok: false, message: `PressKey failed at touch step: ${touchRes.message}`, command, data: touchRes.data };
+  }
+
+  // Calculate final distance from actual end-effector position to touch target
+  const currentPos = adapter.getEndEffectorPosition() || { x: 0, y: 0, z: 0 };
+  const distance = Math.sqrt(
+    Math.pow(currentPos.x - touch.x, 2) +
+    Math.pow(currentPos.y - touch.y, 2) +
+    Math.pow(currentPos.z - touch.z, 2)
+  );
+
+  const isSuccess = distance <= 0.005; // 5mm tolerance
+  
+  if (isSuccess) {
+    addStatusLog({
+      level: "success",
+      message: `Key [${strKey}] touched successfully (offset error: ${(distance * 1000).toFixed(2)}mm).`,
+      source: "pressKey"
+    });
+    if (typeof adapter.flashKey === "function") {
+      try {
+        adapter.flashKey(strKey);
+      } catch (err) {
+        console.error("Failed to flash key:", err);
+      }
+    }
+  } else {
+    addStatusLog({
+      level: "warning",
+      message: `Key [${strKey}] touch completed with high error: ${(distance * 1000).toFixed(2)}mm.`,
+      source: "pressKey"
+    });
+  }
+
+  // Step 3: Move to retreat position
+  addStatusLog({
+    level: "info",
+    message: `Step 3/3: Retreating to approach point above Key [${strKey}]...`,
+    source: "pressKey"
+  });
+  const retreatRes = await moveToTarget(retreat, adapter, "pressKey", COMMAND_TYPES.PRESS_KEY);
+  if (!retreatRes.ok) {
+    return { ok: false, message: `PressKey completed touch but failed to retreat: ${retreatRes.message}`, command, data: { touchError: distance } };
+  }
+
+  // Update robot store with last key press result
+  setRobotState({
+    lastKeyPressResult: {
+      key: strKey,
+      success: isSuccess,
+      errorM: distance,
+      timestamp: Date.now()
+    }
+  });
+
+  return {
+    ok: isSuccess,
+    message: isSuccess
+      ? `Key [${strKey}] pressed successfully. Error: ${(distance * 1000).toFixed(2)}mm.`
+      : `Key [${strKey}] press completed but distance error ${(distance * 1000).toFixed(2)}mm was outside threshold.`,
+    command,
+    data: { errorM: distance }
+  };
+}
+
+/**
  * Executes a pre-validated command. Assumes safety limits have already been checked.
  * 
  * @param {Object} command - Normalized, validated command object
@@ -305,7 +514,8 @@ export async function executeValidatedCommand(command, context) {
       const startAngles = adapter.getJointAngles() || {};
       
       const endAngles = {};
-      joints.forEach(name => {
+      joints.forEach(j => {
+        const name = typeof j === 'string' ? j : j.name;
         endAngles[name] = 0.0;
       });
 
@@ -349,7 +559,19 @@ export async function executeValidatedCommand(command, context) {
       const deltaRad = (command.deltaDeg * Math.PI) / 180;
       const targetAngle = currentAngle + deltaRad;
 
-      const endAngles = { ...startAngles, [command.jointName]: targetAngle };
+      // Respect limits if available
+      const limits = adapter.getJointLimits() || {};
+      const limit = limits[command.jointName];
+      let clampedAngle = targetAngle;
+      if (limit) {
+        const minVal = limit.min !== undefined ? limit.min : limit.lower;
+        const maxVal = limit.max !== undefined ? limit.max : limit.upper;
+        if (typeof minVal === 'number' && typeof maxVal === 'number') {
+          clampedAngle = Math.max(minVal, Math.min(maxVal, targetAngle));
+        }
+      }
+
+      const endAngles = { ...startAngles, [command.jointName]: clampedAngle };
       const trajectory = createJointTrajectory(startAngles, endAngles, { durationMs: 800 });
 
       addStatusLog({
@@ -413,7 +635,7 @@ export async function executeValidatedCommand(command, context) {
         z: currentPos.z + (command.axis === 'z' ? command.delta : 0)
       };
 
-      // 1. Validate target workspace coordinate bounds
+      // Validate target workspace coordinate bounds
       const workspaceCheck = validateWorkspace(targetPos);
       if (!workspaceCheck.ok) {
         result = { 
@@ -425,50 +647,13 @@ export async function executeValidatedCommand(command, context) {
         break;
       }
 
-      // Update target marker position if supported by adapter
-      if (adapter && typeof adapter.setTargetMarkerPosition === "function") {
-        try {
-          adapter.setTargetMarkerPosition(targetPos);
-        } catch (err) {}
-      }
-
-      // 2. Solve Inverse Kinematics
-      const ikResult = solveIK(targetPos, adapter);
-      if (!ikResult.solved) {
-        result = { 
-          ok: false, 
-          message: `Jog movement failed: ${ikResult.message}`, 
-          command, 
-          data: ikResult 
-        };
-        break;
-      }
-
-      // 3. Execute path movement
-      const startAngles = adapter.getJointAngles() || {};
-      const trajectory = createJointTrajectory(startAngles, ikResult.jointAngles, { durationMs: 800 });
-
-      addStatusLog({
-        level: "info",
-        message: `Jogging stylus along '${command.axis}' axis by ${command.delta}m...`,
-        source,
-        commandType: type
-      });
-
-      const runnerRes = await runTrajectory(trajectory, adapter);
-      
-      if (runnerRes.ok) {
-        setRobotState({ 
-          targetPosition: targetPos,
-          endEffectorPosition: targetPos
-        });
-      }
-
-      result = { 
-        ok: runnerRes.ok, 
-        message: runnerRes.ok ? `Jog completed: ${runnerRes.message}` : runnerRes.message, 
-        command, 
-        data: runnerRes 
+      // Reuse moveToTarget internally
+      const moveRes = await moveToTarget(targetPos, adapter, source, type);
+      result = {
+        ok: moveRes.ok,
+        message: moveRes.message,
+        command,
+        data: moveRes.data
       };
       break;
     }
@@ -484,77 +669,122 @@ export async function executeValidatedCommand(command, context) {
         break;
       }
 
-      // Update target marker position if supported by adapter
-      if (adapter && typeof adapter.setTargetMarkerPosition === "function") {
-        try {
-          adapter.setTargetMarkerPosition(command.target);
-        } catch (err) {}
-      }
-
-      // Solve Inverse Kinematics
-      const ikResult = solveIK(command.target, adapter);
-      if (!ikResult.solved) {
-        result = { 
-          ok: false, 
-          message: `MoveTo solver failed: ${ikResult.message}`, 
-          command, 
-          data: ikResult 
-        };
-        break;
-      }
-
-      // Execute path movement
-      const startAngles = adapter.getJointAngles() || {};
-      const trajectory = createJointTrajectory(startAngles, ikResult.jointAngles, { durationMs: 1200 });
-
-      addStatusLog({
-        level: "info",
-        message: `Moving stylus to coordinate (${command.target.x.toFixed(3)}, ${command.target.y.toFixed(3)}, ${command.target.z.toFixed(3)})...`,
-        source,
-        commandType: type
-      });
-
-      const runnerRes = await runTrajectory(trajectory, adapter);
-      
-      if (runnerRes.ok) {
-        setRobotState({ 
-          targetPosition: command.target,
-          endEffectorPosition: command.target
-        });
-      }
-
-      result = { 
-        ok: runnerRes.ok, 
-        message: runnerRes.ok ? `MoveTo completed: ${runnerRes.message}` : runnerRes.message, 
-        command, 
-        data: runnerRes 
+      const moveRes = await moveToTarget(command.target, adapter, source, type);
+      result = {
+        ok: moveRes.ok,
+        message: moveRes.message,
+        command,
+        data: moveRes.data
       };
       break;
     }
 
     case COMMAND_TYPES.PRESS_KEY: {
-      // Planning phase output for Phase B
-      const pressRes = pressKey(command.key, context);
+      if (!adapter) {
+        const pressRes = pressKey(command.key, context);
+        result = {
+          ok: pressRes.ok,
+          message: pressRes.message,
+          command,
+          data: pressRes,
+          pendingImplementation: true
+        };
+        break;
+      }
+      const pressRes = await executePressKey(command.key, context, command);
       result = {
         ok: pressRes.ok,
         message: pressRes.message,
         command,
-        data: pressRes,
-        pendingImplementation: pressRes.pendingImplementation
+        data: pressRes.data
       };
       break;
     }
 
     case COMMAND_TYPES.RUN_PIN: {
-      // Planning phase output for Phase B
-      const pinRes = runPin(command.pin, context);
-      result = {
-        ok: pinRes.ok,
-        message: pinRes.message,
-        command,
-        data: pinRes,
-        pendingImplementation: pinRes.pendingImplementation
+      if (!adapter) {
+        const pinRes = runPin(command.pin, context);
+        result = {
+          ok: pinRes.ok,
+          message: pinRes.message,
+          command,
+          data: pinRes,
+          pendingImplementation: true
+        };
+        break;
+      }
+      const pinStr = String(command.pin);
+      const validation = validatePinAgainstConfig(pinStr, getKeyConfig());
+      if (!validation.ok) {
+        result = { ok: false, message: `RunPin rejected: ${validation.message}`, command, data: null };
+        break;
+      }
+
+      addStatusLog({
+        level: "info",
+        message: `Starting autonomous PIN sequence: [${pinStr}].`,
+        source,
+        commandType: type
+      });
+
+      const progress = {
+        pin: pinStr,
+        currentIndex: 0,
+        pressed: [],
+        failed: false,
+        complete: false
       };
+      setRobotState({ pinProgress: progress });
+
+      let pinSuccess = true;
+      for (let i = 0; i < pinStr.length; i++) {
+        const digit = pinStr[i];
+        
+        // Check if a stop was requested mid-sequence
+        if (isStopRequested()) {
+          addStatusLog({
+            level: "warning",
+            message: `PIN entry aborted at index ${i} due to stop request.`,
+            source: "runPin"
+          });
+          progress.failed = true;
+          setRobotState({ pinProgress: { ...progress } });
+          pinSuccess = false;
+          break;
+        }
+
+        progress.currentIndex = i;
+        setRobotState({ pinProgress: { ...progress } });
+
+        const pressResult = await executePressKey(digit, context, command);
+        if (!pressResult.ok) {
+          addStatusLog({
+            level: "error",
+            message: `PIN entry failed at digit '${digit}' (index ${i}).`,
+            source: "runPin"
+          });
+          progress.failed = true;
+          setRobotState({ pinProgress: { ...progress } });
+          pinSuccess = false;
+          break;
+        }
+
+        progress.pressed.push(digit);
+        setRobotState({ pinProgress: { ...progress } });
+      }
+
+      if (pinSuccess && !progress.failed) {
+        progress.complete = true;
+        setRobotState({ pinProgress: { ...progress } });
+        addStatusLog({
+          level: "success",
+          message: `Autonomous PIN entry [${pinStr}] completed successfully.`,
+          source
+        });
+        result = { ok: true, message: `PIN sequence [${pinStr}] executed successfully.`, command, data: progress };
+      } else {
+        result = { ok: false, message: `PIN sequence execution failed or was aborted.`, command, data: progress };
+      }
       break;
     }
 

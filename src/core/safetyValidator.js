@@ -152,11 +152,15 @@ export function validateJointCommand(command, robotAdapter) {
         const limit = limits[jointName];
 
         if (limit) {
-          if (predictedAngle < limit.min || predictedAngle > limit.max) {
-            return createValidationResult(
-              false,
-              `Rotating joint '${jointName}' by ${deltaDeg}° would result in angle (${predictedAngle.toFixed(3)} rad) violating limit [${limit.min.toFixed(3)}, ${limit.max.toFixed(3)}].`
-            );
+          const minVal = limit.min !== undefined ? limit.min : limit.lower;
+          const maxVal = limit.max !== undefined ? limit.max : limit.upper;
+          if (typeof minVal === 'number' && typeof maxVal === 'number') {
+            if (predictedAngle < minVal || predictedAngle > maxVal) {
+              return createValidationResult(
+                false,
+                `Rotating joint '${jointName}' by ${deltaDeg}° would result in angle (${predictedAngle.toFixed(3)} rad) violating limit [${minVal.toFixed(3)}, ${maxVal.toFixed(3)}].`
+              );
+            }
           }
         }
       }
