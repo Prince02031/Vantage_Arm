@@ -1,115 +1,150 @@
 // src/core/pinRunner.js
-import { CommandTypes } from './commandTypes.js';
-
-let activePinSequence = null;
+import { KEY_APPROACH_OFFSET_M, PIN_REGEX } from './commandTypes.js';
+import { setRobotState } from './robotStore.js';
 
 /**
- * Executes a full 6-digit PIN entry sequence autonomously.
- * For each digit:
- * 1. Navigate to hover position above key
- * 2. Downward touch motion (linear path)
- * 3. Verify target alignment (within 5mm)
- * 4. Retract back to hover height
+ * Builds the Cartesian target coordinates for a key press sequence.
+ * Targets are:
+ * 1. approach: hover offset height (5cm) above key
+ * 2. touch: actual key coordinate
+ * 3. retreat: hover height after key click
  * 
- * @param {string} pin - 6-digit PIN string (e.g., '145236')
- * @param {Object} config - Loaded key.config.json structure
- * @param {Function} executeCommand - Reference to motion pipeline executeCommand
- * @returns {Promise<Object>} Execution report { success: boolean, steps: Array }
+ * @param {string} key - Digit string '1' to '6'
+ * @param {Object} keyConfig - Loaded keys coordinates map from key.config.json
+ * @returns {Object} Target plan containing approach, touch, and retreat coordinates
  */
-export async function runPinSequence(pin, config, executeCommand) {
-  // Validate PIN input format
-  if (!/^\d{6}$/.test(pin)) {
-    throw new Error('PIN must be exactly 6 digits.');
+export function buildKeyPressTargets(key, keyConfig) {
+  const coords = keyConfig?.keys?.[key];
+  if (!coords) {
+    throw new Error(`Coordinates for key '${key}' not found in key configuration.`);
   }
 
-  // Cancel any running sequences
-  abortPinSequence();
+  const offset = KEY_APPROACH_OFFSET_M || 0.05;
 
-  let aborted = false;
-  const stepsReport = [];
-  activePinSequence = {
-    abort: () => { aborted = true; }
+  return {
+    key: String(key),
+    approach: { x: coords.x, y: coords.y, z: coords.z + offset },
+    touch: { x: coords.x, y: coords.y, z: coords.z },
+    retreat: { x: coords.x, y: coords.y, z: coords.z + offset }
   };
+}
+
+/**
+ * Validates a PIN format and verifies that all digits are present in key config.
+ * 
+ * @param {string} pin - 6-digit PIN string
+ * @param {Object} keyConfig - Loaded keys coordinates map
+ * @returns {Object} Validation report { ok: boolean, message: string }
+ */
+export function validatePinAgainstConfig(pin, keyConfig) {
+  if (typeof pin !== "string" || !PIN_REGEX.test(pin)) {
+    return { ok: false, message: "Invalid PIN format. PIN must be exactly 6 digits containing numbers 1 to 6." };
+  }
+
+  if (keyConfig && keyConfig.keys) {
+    for (let i = 0; i < pin.length; i++) {
+      const digit = pin[i];
+      if (!keyConfig.keys[digit]) {
+        return { ok: false, message: `Key coordinate configuration is missing digit '${digit}' from the PIN.` };
+      }
+    }
+  }
+
+  return { ok: true, message: "PIN is valid and matching key configuration." };
+}
+
+/**
+ * Creates the initial tracking state structure for PIN entry progress.
+ * 
+ * @param {string} pin - Target PIN
+ * @returns {Object} Initial pinProgress state
+ */
+export function createPinProgress(pin) {
+  return {
+    pin: String(pin),
+    currentIndex: 0,
+    pressed: [],
+    failed: false,
+    complete: false
+  };
+}
+
+/**
+ * Updates the PIN sequence progress in the global robot state store.
+ * 
+ * @param {Object} partial - Sub-properties of pinProgress
+ */
+export function updatePinProgress(partial) {
+  setRobotState({
+    pinProgress: partial
+  });
+}
+
+/**
+ * Plans a single key press routine.
+ * Phase A behavior: Validates key, builds coordinates, and returns a structured plan description.
+ * 
+ * @param {string} key - Digit string '1' to '6'
+ * @param {Object} [context={}] - Execution context containing { keyConfig, executeCommand }
+ * @returns {Object} KeyPress plan result
+ */
+export function pressKey(key, context = {}) {
+  const strKey = String(key);
+  if (!/^[1-6]$/.test(strKey)) {
+    return { ok: false, message: `Key '${key}' is invalid. Must be '1' through '6'.` };
+  }
 
   try {
-    for (let i = 0; i < pin.length; i++) {
-      if (aborted) {
-        throw new Error('Autonomous PIN entry aborted.');
-      }
-
-      const digit = pin[i];
-      const keyCoords = config.keys[digit];
-
-      if (!keyCoords) {
-        throw new Error(`Key '${digit}' is not defined in key.config.json`);
-      }
-
-      // Step A: Move to Hover Position (Z + hoverOffset)
-      const hoverOffset = 0.030; // 3cm above key
-      const hoverTarget = { x: keyCoords.x, y: keyCoords.y, z: keyCoords.z + hoverOffset };
-      
-      let res = await executeCommand({
-        type: CommandTypes.SET_EE,
-        payload: hoverTarget,
-        source: 'autonomous'
-      });
-      if (!res.success) throw new Error(`Failed to reach hover position for key ${digit}: ${res.message}`);
-
-      // Step B: Downward Touch
-      const touchTarget = { x: keyCoords.x, y: keyCoords.y, z: keyCoords.z };
-      res = await executeCommand({
-        type: CommandTypes.SET_EE,
-        payload: touchTarget,
-        source: 'autonomous'
-      });
-      if (!res.success) throw new Error(`Failed to execute touch on key ${digit}: ${res.message}`);
-
-      // Step C: Verify Touch Coordinate Accuracy (< 5mm deviation)
-      const success = verifyTouchAccuracy(touchTarget, touchTarget); // Mocked for contract
-      stepsReport.push({ digit, keyTarget: touchTarget, success });
-
-      if (!success) {
-        throw new Error(`Accuracy check failed on key ${digit}. Target out of tolerance bounds.`);
-      }
-
-      // Step D: Retract to Hover
-      res = await executeCommand({
-        type: CommandTypes.SET_EE,
-        payload: hoverTarget,
-        source: 'autonomous'
-      });
-      if (!res.success) throw new Error(`Failed to retract from key ${digit}: ${res.message}`);
-    }
-
-    return { success: true, steps: stepsReport };
-  } catch (error) {
-    return { success: false, error: error.message, steps: stepsReport };
-  } finally {
-    activePinSequence = null;
+    const targets = buildKeyPressTargets(strKey, context.keyConfig);
+    return {
+      ok: true,
+      key: strKey,
+      targets,
+      message: `Key press plan created for key ${strKey}. Execution pending Phase B.`,
+      pendingImplementation: true
+    };
+  } catch (err) {
+    return { ok: false, message: err.message };
   }
 }
 
 /**
- * Aborts any active PIN entry sequence.
- */
-export function abortPinSequence() {
-  if (activePinSequence) {
-    activePinSequence.abort();
-    activePinSequence = null;
-  }
-}
-
-/**
- * Validates whether the end-effector tip reached within the 5mm tolerance limit.
+ * Prepares and plans a full 6-digit PIN autonomous entry routine.
+ * Phase A behavior: Verifies parameters, commits tracking state, maps key plans, and returns the path sequence.
  * 
- * @param {Object} target - Target coordinate {x, y, z}
- * @param {Object} actual - Actual end-effector coordinate {x, y, z}
- * @returns {boolean} True if within tolerance
+ * @param {string} pin - 6-digit PIN string
+ * @param {Object} [context={}] - Execution context containing { keyConfig, executeCommand }
+ * @returns {Object} PIN sequence planning result
  */
-export function verifyTouchAccuracy(target, actual, toleranceMeters = 0.005) {
-  const dx = target.x - actual.x;
-  const dy = target.y - actual.y;
-  const dz = target.z - actual.z;
-  const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-  return distance <= toleranceMeters;
+export function runPin(pin, context = {}) {
+  const strPin = String(pin);
+  const validation = validatePinAgainstConfig(strPin, context.keyConfig);
+
+  if (!validation.ok) {
+    return { ok: false, message: validation.message };
+  }
+
+  // Initialize and write progress to store
+  const progress = createPinProgress(strPin);
+  updatePinProgress(progress);
+
+  // Generate targets sequence plan
+  const plan = [];
+  try {
+    for (let i = 0; i < strPin.length; i++) {
+      const key = strPin[i];
+      const keyPlan = buildKeyPressTargets(key, context.keyConfig);
+      plan.push(keyPlan);
+    }
+  } catch (err) {
+    return { ok: false, message: `Failed to compile PIN path targets: ${err.message}` };
+  }
+
+  return {
+    ok: true,
+    pin: strPin,
+    plan,
+    message: "Autonomous PIN path plan generated successfully.",
+    pendingImplementation: true
+  };
 }
