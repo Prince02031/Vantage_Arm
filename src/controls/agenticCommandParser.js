@@ -256,9 +256,13 @@ export async function parseAgenticCommand(transcript, context = {}) {
 
       if (!response.ok) {
         const errJson = await response.json().catch(() => ({}));
-        const errMsg = typeof errJson.error === 'object' && errJson.error !== null
+        let errMsg = typeof errJson.error === 'object' && errJson.error !== null
           ? (errJson.error.message || JSON.stringify(errJson.error))
           : (errJson.error || `Proxy server returned status ${response.status}`);
+
+        if (response.status === 429 || errMsg.toLowerCase().includes('quota') || errMsg.toLowerCase().includes('exhausted') || errMsg.toLowerCase().includes('limit')) {
+          errMsg = `Gemini Quota Exceeded (429: Too Many Requests). Please wait a moment or check your billing plan. Details: ${errMsg}`;
+        }
         throw new Error(errMsg);
       }
 
