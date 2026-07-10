@@ -1,1 +1,20 @@
-{}
+{
+  "name": "vantage-arm",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Browser-based 6-DOF robotic arm simulation and control suite.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.10"
+  }
+}

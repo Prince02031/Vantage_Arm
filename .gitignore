@@ -25,5 +25,4 @@ yarn-error.log*
 *.sln
 *.sw?
 
-# Hackathon / Role Files to ignore
-docs/person-2-motion-pipeline.md
+
