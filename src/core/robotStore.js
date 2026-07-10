@@ -23,7 +23,8 @@ let state = {
   },
   safety: {
     lastValid: true,
-    lastMessage: "Ready"
+    lastMessage: "Ready",
+    lastSafetyResult: null
   },
   statusLog: []
 };

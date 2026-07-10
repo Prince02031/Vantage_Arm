@@ -1,6 +1,6 @@
 // src/core/motionPipeline.js
 import { COMMAND_TYPES, normalizeCommand } from './commandTypes.js';
-import { validateCommand } from './safetyValidator.js';
+import { validateCommand, validateWorkspace } from './safetyValidator.js';
 import { 
   getRobotState, 
   setRobotState, 
@@ -11,8 +11,15 @@ import {
   clearStopRequest, 
   isStopRequested 
 } from './robotStore.js';
+import { 
+  createJointTrajectory, 
+  runTrajectory, 
+  cancelActiveTrajectory 
+} from './trajectoryRunner.js';
+import { solveIK } from '../robotics/ikSolver.js';
+import { pressKey, runPin } from './pinRunner.js';
 
-// Local module state
+// Local module state for key coordinates config
 let localKeyConfig = null;
 
 /**
@@ -23,9 +30,29 @@ let localKeyConfig = null;
  */
 export function registerRobotAdapter(adapter) {
   setRobotAdapter(adapter);
+  
+  if (adapter) {
+    // Read starting joints/limits to configure the store
+    try {
+      const movableJoints = adapter.getMovableJoints() || [];
+      const jointLimits = adapter.getJointLimits() || {};
+      const jointAngles = adapter.getJointAngles() || {};
+      const endEffectorPosition = adapter.getEndEffectorPosition() || { x: 0, y: 0, z: 0 };
+      
+      setRobotState({
+        movableJoints,
+        jointLimits,
+        jointAngles,
+        endEffectorPosition
+      });
+    } catch (err) {
+      console.error("Failed to extract initial joint states from adapter:", err);
+    }
+  }
+
   addStatusLog({
     level: "info",
-    message: adapter ? "Robot Simulation Adapter registered successfully." : "Robot Simulation Adapter deregistered.",
+    message: adapter ? "Robot Simulation Adapter registered and synced." : "Robot Simulation Adapter deregistered.",
     source: "pipeline"
   });
 }
@@ -58,6 +85,7 @@ export function getKeyConfig() {
  */
 export function stopMotion() {
   requestStop();
+  cancelActiveTrajectory();
   setRobotState({ isMoving: false });
   addStatusLog({
     level: "warning",
@@ -75,12 +103,11 @@ export function stopMotion() {
 export function getPipelineStatus() {
   const currentState = getRobotState();
   return {
+    adapter: getRobotAdapter() ? "registered" : "missing",
+    activeCommand: currentState.activeCommand,
     isMoving: currentState.isMoving,
-    safetyTripped: !currentState.safety.lastValid,
-    safetyMessage: currentState.safety.lastMessage,
-    stopRequested: isStopRequested(),
-    hasAdapter: !!getRobotAdapter(),
-    hasKeyConfig: !!getKeyConfig()
+    lastSafetyResult: currentState.safety.lastSafetyResult || null,
+    stopRequested: isStopRequested()
   };
 }
 
@@ -104,8 +131,16 @@ export async function executeCommand(command, options = {}) {
       message: `Command normalization failed: ${err.message}`,
       source: command?.source || "unknown"
     });
-    return { ok: false, message: `Normalization error: ${err.message}`, command };
+    return { ok: false, message: `Normalization error: ${err.message}`, command, data: null };
   }
+
+  // Log incoming request
+  addStatusLog({
+    level: "info",
+    message: `Received command type [${normalized.type}] from [${normalized.source}].`,
+    source: normalized.source,
+    commandType: normalized.type
+  });
 
   // 2. Set as active command in the store
   setRobotState({ activeCommand: normalized });
@@ -124,14 +159,15 @@ export async function executeCommand(command, options = {}) {
     setRobotState({
       safety: {
         lastValid: false,
-        lastMessage: validation.message
+        lastMessage: validation.message,
+        lastSafetyResult: validation
       },
       activeCommand: null
     });
 
     addStatusLog({
       level: "error",
-      message: `Safety Block: ${validation.message}`,
+      message: `Safety Blocked command [${normalized.type}]: ${validation.message}`,
       source: normalized.source,
       commandType: normalized.type
     });
@@ -139,7 +175,8 @@ export async function executeCommand(command, options = {}) {
     return { 
       ok: false, 
       message: `Safety Violation: ${validation.message}`, 
-      command: normalized 
+      command: normalized,
+      data: validation
     };
   }
 
@@ -147,12 +184,25 @@ export async function executeCommand(command, options = {}) {
   setRobotState({
     safety: {
       lastValid: true,
-      lastMessage: "Ready"
+      lastMessage: "Ready",
+      lastSafetyResult: validation
     }
   });
 
   // 5. Dispatch command to execution pipeline
-  return await executeValidatedCommand(normalized, context);
+  try {
+    const result = await executeValidatedCommand(normalized, context);
+    return result;
+  } catch (err) {
+    addStatusLog({
+      level: "error",
+      message: `Execution failed internally: ${err.message}`,
+      source: normalized.source,
+      commandType: normalized.type
+    });
+    setRobotState({ activeCommand: null, isMoving: false });
+    return { ok: false, message: `Internal error: ${err.message}`, command: normalized, data: null };
+  }
 }
 
 /**
@@ -164,85 +214,309 @@ export async function executeCommand(command, options = {}) {
  */
 export async function executeValidatedCommand(command, context) {
   const { type, source } = command;
+  const adapter = context.robotAdapter;
 
-  // Log accepted state
-  addStatusLog({
-    level: "info",
-    message: `Accepted command type [${type}] from [${source}].`,
-    source,
-    commandType: type
-  });
-
-  let result = { ok: true, message: "" };
+  let result = { ok: true, message: "", command, data: null };
 
   switch (type) {
-    case COMMAND_TYPES.STOP:
+    case COMMAND_TYPES.STOP: {
       stopMotion();
-      result = { ok: true, message: "Stop command registered. Motion pipeline halted." };
+      result = { 
+        ok: true, 
+        message: "Stop command registered. Motion pipeline halted.", 
+        command, 
+        data: null 
+      };
       break;
+    }
 
-    case COMMAND_TYPES.HOME:
+    case COMMAND_TYPES.HOME: {
+      if (!adapter) {
+        result = { 
+          ok: false, 
+          message: "Home command rejected: No robot simulation adapter registered.", 
+          command, 
+          data: null 
+        };
+        break;
+      }
+      
       clearStopRequest();
+      const joints = adapter.getMovableJoints() || [];
+      const startAngles = adapter.getJointAngles() || {};
+      
+      const endAngles = {};
+      joints.forEach(name => {
+        endAngles[name] = 0.0;
+      });
+
+      const trajectory = createJointTrajectory(startAngles, endAngles, { durationMs: 1500 });
+      
       addStatusLog({
-        level: "success",
-        message: "Robot home command completed. (Actual hardware return pending Phase B)",
+        level: "info",
+        message: "Initiating return to home (zero joints config)...",
         source,
         commandType: type
       });
-      result = { ok: true, message: "Home coordinates accepted. Movement pending implementation." };
-      break;
 
-    case COMMAND_TYPES.JOG:
+      const runnerRes = await runTrajectory(trajectory, adapter);
+      
+      if (runnerRes.ok && adapter.getEndEffectorPosition) {
+        setRobotState({ endEffectorPosition: adapter.getEndEffectorPosition() });
+      }
+
       result = { 
-        ok: true, 
-        message: `Jog command validated: axis '${command.axis}', delta ${command.delta}m.`,
-        pendingImplementation: true 
+        ok: runnerRes.ok, 
+        message: runnerRes.message, 
+        command, 
+        data: runnerRes 
       };
       break;
+    }
 
-    case COMMAND_TYPES.MOVE_TO:
+    case COMMAND_TYPES.ROTATE_JOINT: {
+      if (!adapter) {
+        result = { 
+          ok: false, 
+          message: "RotateJoint rejected: No robot simulation adapter registered.", 
+          command, 
+          data: null 
+        };
+        break;
+      }
+
+      const startAngles = adapter.getJointAngles() || {};
+      const currentAngle = startAngles[command.jointName] || 0.0;
+      const deltaRad = (command.deltaDeg * Math.PI) / 180;
+      const targetAngle = currentAngle + deltaRad;
+
+      const endAngles = { ...startAngles, [command.jointName]: targetAngle };
+      const trajectory = createJointTrajectory(startAngles, endAngles, { durationMs: 800 });
+
+      addStatusLog({
+        level: "info",
+        message: `Rotating joint '${command.jointName}' by ${command.deltaDeg}°...`,
+        source,
+        commandType: type
+      });
+
+      const runnerRes = await runTrajectory(trajectory, adapter);
+      
+      if (runnerRes.ok && adapter.getEndEffectorPosition) {
+        setRobotState({ endEffectorPosition: adapter.getEndEffectorPosition() });
+      }
+
       result = { 
-        ok: true, 
-        message: `MoveTo command validated: target (${command.target.x}, ${command.target.y}, ${command.target.z}).`,
-        pendingImplementation: true 
+        ok: runnerRes.ok, 
+        message: runnerRes.message, 
+        command, 
+        data: runnerRes 
       };
       break;
+    }
 
-    case COMMAND_TYPES.PRESS_KEY:
+    case COMMAND_TYPES.JOG: {
+      if (!adapter) {
+        result = { 
+          ok: false, 
+          message: "Jog rejected: No robot simulation adapter registered.", 
+          command, 
+          data: null 
+        };
+        break;
+      }
+
+      if (typeof adapter.getEndEffectorPosition !== "function") {
+        result = { 
+          ok: false, 
+          message: "Jog rejected: Robot adapter lacks getEndEffectorPosition method.", 
+          command, 
+          data: null 
+        };
+        break;
+      }
+
+      const currentPos = adapter.getEndEffectorPosition();
+      if (!currentPos) {
+        result = { 
+          ok: false, 
+          message: "Jog rejected: Could not retrieve current stylus tip coordinates.", 
+          command, 
+          data: null 
+        };
+        break;
+      }
+
+      // Calculate target position
+      const targetPos = {
+        x: currentPos.x + (command.axis === 'x' ? command.delta : 0),
+        y: currentPos.y + (command.axis === 'y' ? command.delta : 0),
+        z: currentPos.z + (command.axis === 'z' ? command.delta : 0)
+      };
+
+      // 1. Validate target workspace coordinate bounds
+      const workspaceCheck = validateWorkspace(targetPos);
+      if (!workspaceCheck.ok) {
+        result = { 
+          ok: false, 
+          message: `Jog coordinate rejected: ${workspaceCheck.message}`, 
+          command, 
+          data: workspaceCheck 
+        };
+        break;
+      }
+
+      // Update target marker position if supported by adapter
+      if (adapter && typeof adapter.setTargetMarkerPosition === "function") {
+        try {
+          adapter.setTargetMarkerPosition(targetPos);
+        } catch (err) {}
+      }
+
+      // 2. Solve Inverse Kinematics
+      const ikResult = solveIK(targetPos, adapter);
+      if (!ikResult.solved) {
+        result = { 
+          ok: false, 
+          message: `Jog movement failed: ${ikResult.message}`, 
+          command, 
+          data: ikResult 
+        };
+        break;
+      }
+
+      // 3. Execute path movement
+      const startAngles = adapter.getJointAngles() || {};
+      const trajectory = createJointTrajectory(startAngles, ikResult.jointAngles, { durationMs: 800 });
+
+      addStatusLog({
+        level: "info",
+        message: `Jogging stylus along '${command.axis}' axis by ${command.delta}m...`,
+        source,
+        commandType: type
+      });
+
+      const runnerRes = await runTrajectory(trajectory, adapter);
+      
+      if (runnerRes.ok) {
+        setRobotState({ 
+          targetPosition: targetPos,
+          endEffectorPosition: targetPos
+        });
+      }
+
       result = { 
-        ok: true, 
-        message: `PressKey command validated: target key '${command.key}'.`,
-        pendingImplementation: true 
+        ok: runnerRes.ok, 
+        message: runnerRes.ok ? `Jog completed: ${runnerRes.message}` : runnerRes.message, 
+        command, 
+        data: runnerRes 
       };
       break;
+    }
 
-    case COMMAND_TYPES.RUN_PIN:
+    case COMMAND_TYPES.MOVE_TO: {
+      if (!adapter) {
+        result = { 
+          ok: false, 
+          message: "MoveTo rejected: No robot simulation adapter registered.", 
+          command, 
+          data: null 
+        };
+        break;
+      }
+
+      // Update target marker position if supported by adapter
+      if (adapter && typeof adapter.setTargetMarkerPosition === "function") {
+        try {
+          adapter.setTargetMarkerPosition(command.target);
+        } catch (err) {}
+      }
+
+      // Solve Inverse Kinematics
+      const ikResult = solveIK(command.target, adapter);
+      if (!ikResult.solved) {
+        result = { 
+          ok: false, 
+          message: `MoveTo solver failed: ${ikResult.message}`, 
+          command, 
+          data: ikResult 
+        };
+        break;
+      }
+
+      // Execute path movement
+      const startAngles = adapter.getJointAngles() || {};
+      const trajectory = createJointTrajectory(startAngles, ikResult.jointAngles, { durationMs: 1200 });
+
+      addStatusLog({
+        level: "info",
+        message: `Moving stylus to coordinate (${command.target.x.toFixed(3)}, ${command.target.y.toFixed(3)}, ${command.target.z.toFixed(3)})...`,
+        source,
+        commandType: type
+      });
+
+      const runnerRes = await runTrajectory(trajectory, adapter);
+      
+      if (runnerRes.ok) {
+        setRobotState({ 
+          targetPosition: command.target,
+          endEffectorPosition: command.target
+        });
+      }
+
       result = { 
-        ok: true, 
-        message: `RunPin command validated: 6-digit sequence '${command.pin}'.`,
-        pendingImplementation: true 
+        ok: runnerRes.ok, 
+        message: runnerRes.ok ? `MoveTo completed: ${runnerRes.message}` : runnerRes.message, 
+        command, 
+        data: runnerRes 
       };
       break;
+    }
 
-    case COMMAND_TYPES.ROTATE_JOINT:
-      result = { 
-        ok: true, 
-        message: `RotateJoint command validated: joint '${command.jointName}', rotation ${command.deltaDeg}°.`,
-        pendingImplementation: true 
+    case COMMAND_TYPES.PRESS_KEY: {
+      // Planning phase output for Phase B
+      const pressRes = pressKey(command.key, context);
+      result = {
+        ok: pressRes.ok,
+        message: pressRes.message,
+        command,
+        data: pressRes,
+        pendingImplementation: pressRes.pendingImplementation
       };
       break;
+    }
+
+    case COMMAND_TYPES.RUN_PIN: {
+      // Planning phase output for Phase B
+      const pinRes = runPin(command.pin, context);
+      result = {
+        ok: pinRes.ok,
+        message: pinRes.message,
+        command,
+        data: pinRes,
+        pendingImplementation: pinRes.pendingImplementation
+      };
+      break;
+    }
 
     default:
-      result = { ok: false, message: `Unsupported command handler: ${type}` };
+      result = { ok: false, message: `Unsupported command handler: ${type}`, command, data: null };
       break;
   }
 
-  // Reset activeCommand in store on completion/acknowledgement of execution
+  // Reset activeCommand in store on completion of execution
   setRobotState({ activeCommand: null });
 
   if (result.ok) {
     addStatusLog({
       level: "success",
+      message: result.message,
+      source,
+      commandType: type
+    });
+  } else {
+    addStatusLog({
+      level: "error",
       message: result.message,
       source,
       commandType: type

@@ -196,6 +196,22 @@ export function validateCommand(command, context = {}) {
       if (Math.abs(delta) > 0.10) {
         return createValidationResult(false, `Jog step size (${delta.toFixed(3)}m) exceeds maximum threshold of 0.10m.`);
       }
+      if (context.robotAdapter && typeof context.robotAdapter.getEndEffectorPosition === "function") {
+        try {
+          const currentPos = context.robotAdapter.getEndEffectorPosition();
+          if (currentPos) {
+            const targetPos = {
+              x: currentPos.x + (axis === 'x' ? delta : 0),
+              y: currentPos.y + (axis === 'y' ? delta : 0),
+              z: currentPos.z + (axis === 'z' ? delta : 0)
+            };
+            const workspaceCheck = validateWorkspace(targetPos);
+            if (!workspaceCheck.ok) {
+              return createValidationResult(false, `Jog target outside bounds: ${workspaceCheck.message}`);
+            }
+          }
+        } catch (err) {}
+      }
       return createValidationResult(true, "Jog command is valid.");
     }
 

@@ -4,7 +4,8 @@ import {
   clearStopRequest, 
   setRobotState, 
   addStatusLog,
-  setActiveTrajectory
+  setActiveTrajectory,
+  requestStop
 } from './robotStore.js';
 
 let activeAnimationId = null;
@@ -130,16 +131,40 @@ export function runTrajectory(trajectory, robotAdapter, options = {}) {
       }
 
       // 4. Update the state store
-      setRobotState({
+      const stateUpdate = {
         jointAngles: currentAngles,
         isMoving: true
-      });
+      };
+
+      if (robotAdapter && typeof robotAdapter.getEndEffectorPosition === "function") {
+        try {
+          const currentEE = robotAdapter.getEndEffectorPosition();
+          if (currentEE) {
+            stateUpdate.endEffectorPosition = { x: currentEE.x, y: currentEE.y, z: currentEE.z };
+          }
+        } catch (err) {}
+      }
+
+      setRobotState(stateUpdate);
 
       if (progress < 1.0) {
         activeAnimationId = requestAnimationFrame(step);
       } else {
         // Complete trajectory execution
         cleanup();
+
+        // Final sync of end effector position on completion
+        const finalUpdate = { isMoving: false };
+        if (robotAdapter && typeof robotAdapter.getEndEffectorPosition === "function") {
+          try {
+            const finalEE = robotAdapter.getEndEffectorPosition();
+            if (finalEE) {
+              finalUpdate.endEffectorPosition = { x: finalEE.x, y: finalEE.y, z: finalEE.z };
+            }
+          } catch (err) {}
+        }
+        setRobotState(finalUpdate);
+
         addStatusLog({
           level: "success",
           message: "Trajectory execution completed successfully.",
