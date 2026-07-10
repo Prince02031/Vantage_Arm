@@ -77,93 +77,43 @@ Every input adapter builds a `command` of the form:
 
 ---
 
-## Current Progress — Phase B (Controls & Dashboard)
+## Current Progress — Phase C (IK Motion & Key Press)
 
-Person 3 has shipped the operator-facing dashboard shell and wired every
-manual input through the shared motion pipeline. Highlights:
+All Phase C features are fully integrated, providing unified motion control and key-press automation:
 
-- **Dashboard layout** (`src/components/Dashboard.jsx`): top bar, scene area on
-  the left, control stack on the right, status log across the bottom — responsive
-  collapse under 1100px.
-- **StatusLog** (`src/components/StatusLog.jsx`): subscribes to
-  `robotStore.logs`, renders level chip (INFO / SUCCESS / WARNING / ERROR),
-  timestamp, source, command type, message. Empty state included. Logs are now
-  pushed with structured `commandType` / `source` / `level` fields so the panel
-  can render chips reliably.
-- **SafetyPanel** (`src/components/SafetyPanel.jsx`): surfaces last validation
-  message, violation count, current system state (Ready / Moving / Tripped),
-  active command source, and adapter availability. Inline Halt + Reset buttons
-  route through `executeCommand`.
-- **JointPanel**: read-only display of joint angles and end-effector pose from
-  `robotStore`.
-- **Control panels** (all routed through `executeCommand`):
-  - **JoystickPanel** — eight buttons (`X+`, `X-`, `Y+`, `Y-`, `Z+`, `Z-`,
-    `Home`, `Stop`) backed by `createJoystickAdapter`. Each move dispatches
-    `{ type: 'JOG_AXIS', payload: { axis, delta } }`, the system buttons
-    dispatch `HOME` or `STOP`.
-  - **TargetInputPanel** — numeric `x / y / z` fields + **Move To** button.
-    Sends `{ type: 'MOVE_TO', payload: { target: { x, y, z } } }` from
-    `source: 'dashboard'`.
-  - **KeyboardHelp** — installs global `keydown` + `keyup` listeners via
-    `createKeyboardAdapter`. Keymap: `W/S` ±X, `A/D` ±Y, `Q/E` ±Z, `H` home,
-    `Space` stop. Keystrokes inside any `<input>` / `<textarea>` are ignored,
-    and held keys do not spam the pipeline.
-  - **VoicePanel** — typed-fallback UI. Each typed transcript runs through the
-    deterministic parser in `src/controls/voiceCommandParser.js`. Phase B
-    phrases include `move up|down|left|right|forward|back`, `press key one..six`,
-    `enter pin <NNNNNN>`, `home`, `stop`, plus the legacy move-by-N / rotate-by-N
-    / tap-key / halt / reset-safety shapes.
-  - **PinEntryPanel** — 6-digit PIN entry shell that only accepts digits `1-6`,
-    both via keypad clicks and free-text input. Dispatches
-    `{ type: 'RUN_PIN', payload: { pin } }` from `source: 'pin-panel'`; the
-    full hover / touch / verify / retract orchestration is owned by Person 2's
-    `pinRunner.js`.
-- **Scene integration** — uses a safe SVG placeholder that respects
-  `window.__VA_USE_REAL_SCENE__` so Person 1's real Three.js canvas can be
-  hot-swapped in from `feat/scene-urdf` without any dashboard changes.
-- **Styling** — `src/index.css` ships a dark, presentation-friendly theme.
-- **Architecture rule enforced** — none of the dashboard components or input
-  adapters mutates `robotStore` directly. Every motion request is funneled
-  through `executeCommand(command)`.
+- **Dashboard Layout**: Rich 6-DOF controls and visualizer with live joint updates, safety panel integration, and chronological Status Log.
+- **Inverse Kinematics (IK) & Trajectories**: Features a high-performance, Jacobian-free numerical gradient descent solver running at 60Hz. It accurately resolves Cartesian coordinates to joint states within a 5mm tolerance, smoothly animated by ease-in-out cubic trajectories.
+- **Autonomous key tapping**: The newly added **Press Key** panel supports direct triggers for Keys 1-6. Clicking a key initiates a multi-stage approach (hover 5cm above), touch (descend to surface), contact flash, and retreat sequence.
+- **Sequential PIN Entry**: The **Pin Entry** panel executes sequential key pressing routines for 6-digit PIN strings.
+- **Advanced Status Log & Safety**: Displays live IK solve status, absolute Cartesian distance error (in millimeters), active command source tracking, and error-highlighted logging.
 
-### Controls Reference (Phase B)
+### Controls Reference (Phase C)
 
 | Source        | UI                          | Adapter / dispatch                             | Pipeline command |
 | ------------- | --------------------------- | ---------------------------------------------- | ---------------- |
-| Joystick      | `JoystickPanel` buttons     | `createJoystickAdapter`                        | `JOG_AXIS` / `HOME` / `STOP` |
-| Move To       | `TargetInputPanel` form     | inline `executeCommand`                        | `MOVE_TO`        |
-| Keyboard      | window listener             | `createKeyboardAdapter` (W/A/D + Q/E + H/Space)| `JOG_AXIS` / `HOME` / `STOP` |
-| Voice (typed) | `VoicePanel` textbox/chips  | `parseVoiceCommand` → `executeCommand`         | `JOG_AXIS` / `TAP_KEY` / `RUN_PIN` / `HOME` / `STOP` / `HALT` / `RESET_SAFETY` |
-| Autonomous PIN| `PinEntryPanel`             | inline `executeCommand`                        | `RUN_PIN`        |
-| Safety        | `SafetyPanel` buttons       | inline `executeCommand`                        | `HALT` / `RESET_SAFETY` |
-
-> All commands flow through the same `executeCommand(command)` entry point in
-> `src/core/motionPipeline.js`. No control mutates `robotStore` directly.
-
-### Phase B Open Items for Person 2
-
-To make the dashboard richer, Person 2 should expose (in a follow-up Phase C
-commit):
-
-1. **Adapter status field** on `robotStore.state` (e.g. `state.adapter` with
-   `{ connected, firmwareVersion, lastHeartbeatAt }`) so `SafetyPanel` can show
-   real adapter health instead of a hard-coded "Phase A contracts" line.
-2. **`motion.activeCommandSource` updates** — currently the pipeline logs the
-   source but does not push it onto `state.motion`. Setting it on every command
-   would let `SafetyPanel` show *which* input last spoke to the arm.
-3. **`motion.activeTrajectoryPath`** — `trajectoryRunner.js` should populate
-   this array as the trajectory runs, so `TrajectoryLine` can visualise it.
-4. **Live joint / EE updates** — once FK and IK are wired, `robotStore.jointAngles`
-   and `robotStore.eePosition` need to be updated from the trajectory runner
-   callbacks (currently they stay at the Phase A defaults).
-5. **`logs[].commandType` and `logs[].source`** — currently the pipeline only
-   pushes `type: 'INFO'` and the type/source inside the message string. Adding
-   the fields directly on the log entry would let `StatusLog` render the chips
-   it already supports.
+| Press Key     | `KeyPressPanel` buttons     | `executeCommand`                               | `pressKey`       |
+| Joystick      | `JoystickPanel` buttons     | `createJoystickAdapter`                        | `jog` / `home` / `stop` |
+| Move To       | `TargetInputPanel` form     | inline `executeCommand`                        | `moveTo`         |
+| Keyboard      | window listener             | `createKeyboardAdapter` (W/A/D + Q/E + H/Space)| `jog` / `home` / `stop` |
+| Voice (typed) | `VoicePanel` textbox/chips  | `parseVoiceCommand` → `executeCommand`         | `jog` / `pressKey` / `runPin` / `home` / `stop` / `halt` / `resetSafety` |
+| Autonomous PIN| `PinEntryPanel`             | inline `executeCommand`                        | `runPin`         |
+| Safety        | `SafetyPanel` buttons       | inline `executeCommand`                        | `halt` / `resetSafety` |
 
 ---
 
-## Demo
+## Demo Instructions (Phase C)
 
-See `docs/demo-script.md` for a step-by-step walkthrough aligned with the
-dashboard's current layout.
+To perform the Phase C judging demo:
+1. Run `npm run dev` and open the app.
+2. Verify the 3D scene renders the robotic arm and the 6-key panel.
+3. Click the **Home** button to return the arm to the home position.
+4. Try moving the arm to an absolute target:
+   - In the **Move To** panel, set X: `0.35`, Y: `0.1`, Z: `0.20` and click **Move To**.
+   - Observe the arm smoothly move to the target position, and the safety panel show `IK Status: Solved (err: ~0.000m)`.
+5. Click **5** in the **Press Key** panel:
+   - Observe the stylus hover above Key 5, descend to touch, trigger a contact flash on Key 5, and retreat.
+   - Verify the touch precision in the Safety panel: `Last Key Press: Key [5] — OK (0.2mm)` or equivalent.
+6. Try a sequential PIN run:
+   - Enter `123456` in the **Autonomous PIN** input and click **Execute PIN**.
+   - Click **Stop** in the joystick panel to interrupt the sequence at any time.
+

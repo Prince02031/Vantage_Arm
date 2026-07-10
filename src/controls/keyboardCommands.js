@@ -33,11 +33,11 @@ export function createKeyboardAdapter({
   }
 
   function send(type, payload = {}) {
-    return executeCommand({ type, payload, source });
+    return executeCommand({ type, source, ...payload });
   }
 
   function jogAxis(axis, sign) {
-    return send(CommandTypes.JOG_AXIS, { axis, delta: sign * defaultDelta });
+    return executeCommand({ type: 'jog', axis, delta: sign * defaultDelta, source });
   }
 
   const handlers = {
@@ -50,8 +50,8 @@ export function createKeyboardAdapter({
     KeyE: () => jogAxis('z', -1),
 
     // System commands
-    KeyH: () => send(CommandTypes.HOME),
-    Space: () => send(CommandTypes.STOP)
+    KeyH: () => executeCommand({ type: 'home', source }),
+    Space: () => executeCommand({ type: 'stop', source })
   };
 
   // Track held keys so a single physical press is one command, regardless of

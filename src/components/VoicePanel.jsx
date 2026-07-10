@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { parseVoiceCommand } from '../controls/voiceCommandParser.js';
 import { executeCommand } from '../core/motionPipeline.js';
 
-// Phrase examples covering the new Phase B commands. Click a chip to fire it.
+// Phrase examples covering the new Phase C commands. Click a chip to fire it.
 const EXAMPLES = [
   'move up',
   'move down',
@@ -15,6 +15,7 @@ const EXAMPLES = [
   'move right',
   'move forward',
   'move backward',
+  'move to 0.55 0 0.10',
   'press key one',
   'press key two',
   'press key three',

@@ -1,4 +1,7 @@
 // src/controls/voiceCommandParser.js
+// Phase C: emit pipeline-native command types (pressKey, jog, moveTo, runPin, home, stop)
+// normalizeCommand() in commandTypes.js also maps aliases, but we use canonical types here
+// for clarity and to avoid double-aliasing bugs.
 import { CommandTypes } from '../core/commandTypes.js';
 
 /**
@@ -77,6 +80,12 @@ const RE_TAP_KEY_NUM  = /^\s*tap\s+key\s+([1-6])\s*$/i;
 const RE_PRESS_KEY_N  = /^\s*press\s+key\s+([1-6])\s*$/i;
 const RE_PRESS_KEY_W  = /^\s*press\s+key\s+(one|two|three|four|five|six)\s*$/i;
 
+// "move to X Y Z" — absolute Cartesian target
+const RE_MOVE_TO = new RegExp(
+  `^\\s*move\\s+to\\s+${NUMBER}\\s+${NUMBER}\\s+${NUMBER}\\s*$`,
+  'i'
+);
+
 // enter pin <NNNNNN>
 const RE_PIN = /^\s*enter\s+pin\s+(\d{6})\s*$/i;
 
@@ -95,8 +104,23 @@ export function parseVoiceCommand(transcript, { source = 'voice' } = {}) {
   }
   const text = transcript.trim();
 
+  // --- Phase C "move to X Y Z" absolute target phrase ---
+  const moveToMatch = text.match(RE_MOVE_TO);
+  if (moveToMatch) {
+    const x = parseFloat(moveToMatch[1]);
+    const y = parseFloat(moveToMatch[2]);
+    const z = parseFloat(moveToMatch[3]);
+    if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+      return {
+        matched: true,
+        message: `Move to (${x}, ${y}, ${z}) m`,
+        command: { type: 'moveTo', target: { x, y, z }, source }
+      };
+    }
+  }
+
   // --- Phase B bare-direction phrases (no magnitude). -----------------------
-  // "move up" → JOG_AXIS z +2cm
+  // "move up" → jog z +2cm
   const bareMove = text.match(/^\s*move\s+(up|down|left|right|forward|back)\s*$/i);
   if (bareMove) {
     const dir = bareMove[1].toLowerCase();
@@ -104,7 +128,7 @@ export function parseVoiceCommand(transcript, { source = 'voice' } = {}) {
     return {
       matched: true,
       message: `Move ${dir} → ${axis.toUpperCase()}${sign > 0 ? '+' : '−'} (2 cm)`,
-      command: { type: CommandTypes.JOG_AXIS, payload: { axis, delta: sign * 0.02 }, source }
+      command: { type: 'jog', axis, delta: sign * 0.02, source }
     };
   }
 
@@ -140,27 +164,27 @@ export function parseVoiceCommand(transcript, { source = 'voice' } = {}) {
     };
   }
 
-  // --- "press key one|two|three|four|five|six" (Phase B) ---
+  // --- "press key one|two|three|four|five|six" (Phase C — emit pressKey) ---
   const pressWord = text.match(RE_PRESS_KEY_W);
   if (pressWord) {
-    const keyId = NUMBER_WORDS[pressWord[1].toLowerCase()];
+    const key = NUMBER_WORDS[pressWord[1].toLowerCase()];
     return {
       matched: true,
-      message: `Press key ${pressWord[1].toLowerCase()} (key ${keyId}) from voice.`,
-      command: { type: CommandTypes.TAP_KEY, payload: { keyId }, source }
+      message: `Press key ${pressWord[1].toLowerCase()} (key ${key}) — full approach/touch/retreat.`,
+      command: { type: 'pressKey', key, source }
     };
   }
   const pressNum = text.match(RE_PRESS_KEY_N);
   if (pressNum) {
-    const keyId = pressNum[1];
+    const key = pressNum[1];
     return {
       matched: true,
-      message: `Press key ${keyId} from voice.`,
-      command: { type: CommandTypes.TAP_KEY, payload: { keyId }, source }
+      message: `Press key ${key} — full approach/touch/retreat.`,
+      command: { type: 'pressKey', key, source }
     };
   }
 
-  // --- "enter pin NNNNNN" (Phase B) ---
+  // --- "enter pin NNNNNN" (Phase C) ---
   const pinMatch = text.match(RE_PIN);
   if (pinMatch) {
     const pin = pinMatch[1];
@@ -169,21 +193,21 @@ export function parseVoiceCommand(transcript, { source = 'voice' } = {}) {
       matched: ok,
       message: ok
         ? `Enter PIN ${pin} from voice.`
-        : `Enter PIN ${pin} from voice (digits must each be 1-6).`,
+        : `Enter PIN ${pin} from voice — digits must each be 1–6.`,
       command: ok
-        ? { type: CommandTypes.RUN_PIN, payload: { pin }, source }
+        ? { type: 'runPin', pin, source }
         : undefined
     };
   }
 
-  // --- Tap key <N> (legacy) ---
+  // --- Tap key <N> (legacy alias → pressKey) ---
   const tapMatch = text.match(RE_TAP_KEY_NUM);
   if (tapMatch) {
-    const keyId = tapMatch[1];
+    const key = tapMatch[1];
     return {
       matched: true,
-      message: `Recognized tap key ${keyId} from voice.`,
-      command: { type: CommandTypes.TAP_KEY, payload: { keyId }, source }
+      message: `Tap key ${key} → pressKey pipeline.`,
+      command: { type: 'pressKey', key, source }
     };
   }
 
@@ -205,21 +229,19 @@ export function parseVoiceCommand(transcript, { source = 'voice' } = {}) {
     };
   }
 
-  // --- Move EE with magnitude (legacy) ---
+  // --- Move EE with magnitude (legacy — maps to jog single axis) ---
   const moveMatch = text.match(RE_MOVE);
   if (moveMatch) {
     const dir = moveMatch[1].toLowerCase();
     const value = parseFloat(moveMatch[2]);
     const unit = (moveMatch[3] || 'cm').toLowerCase();
     const unitMeters = UNITS_TO_METERS[unit] ?? UNITS_TO_METERS.cm;
-    const step = DIRECTIONS[dir];
-    const dx = step.dx * value * (unitMeters / UNITS_TO_METERS.cm);
-    const dy = step.dy * value * (unitMeters / UNITS_TO_METERS.cm);
-    const dz = step.dz * value * (unitMeters / UNITS_TO_METERS.cm);
+    const { axis, sign } = DIRECTION_AXIS[dir] || { axis: 'z', sign: 1 };
+    const delta = sign * value * unitMeters;
     return {
       matched: true,
-      message: `Move ${dir} by ${value} ${unit} → dx=${dx.toFixed(3)} dy=${dy.toFixed(3)} dz=${dz.toFixed(3)}`,
-      command: { type: CommandTypes.MOVE_EE, payload: { dx, dy, dz }, source }
+      message: `Move ${dir} by ${value} ${unit} → jog ${axis.toUpperCase()} ${delta > 0 ? '+' : ''}${delta.toFixed(3)}m`,
+      command: { type: 'jog', axis, delta, source }
     };
   }
 

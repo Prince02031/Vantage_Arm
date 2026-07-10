@@ -9,6 +9,7 @@ import TargetInputPanel from './TargetInputPanel.jsx';
 import KeyboardHelp from './KeyboardHelp.jsx';
 import VoicePanel from './VoicePanel.jsx';
 import PinEntryPanel from './PinEntryPanel.jsx';
+import KeyPressPanel from './KeyPressPanel.jsx';
 
 export default function Dashboard() {
   return (
@@ -22,7 +23,7 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="dashboard-phase">
-          <span className="phase-tag">Phase B · Controls &amp; Dashboard</span>
+          <span className="phase-tag">Phase C · IK Motion &amp; Key Press</span>
         </div>
       </header>
 
@@ -35,6 +36,7 @@ export default function Dashboard() {
         <aside className="dashboard-controls" aria-label="Controls panel">
           <JointPanel />
           <SafetyPanel />
+          <KeyPressPanel />
           <JoystickPanel />
           <TargetInputPanel />
           <KeyboardHelp />
@@ -49,4 +51,3 @@ export default function Dashboard() {
     </div>
   );
 }
-

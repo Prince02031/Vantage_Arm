@@ -25,6 +25,7 @@ export function createJoystickAdapter({
   /**
    * Push the end-effector along a single Cartesian axis by `delta` meters.
    * `axis` is one of 'x' | 'y' | 'z'. Sign of `delta` selects the direction.
+   * Emits the canonical 'jog' type that motionPipeline.js handles natively.
    */
   function pushAxis(axis, delta = defaultDelta) {
     const a = String(axis || '').toLowerCase();
@@ -32,8 +33,9 @@ export function createJoystickAdapter({
       throw new Error(`Unsupported joystick axis: ${axis}`);
     }
     return executeCommand({
-      type: CommandTypes.JOG_AXIS,
-      payload: { axis: a, delta: Number(delta) || 0 },
+      type: 'jog',
+      axis: a,
+      delta: Number(delta) || 0,
       source
     });
   }
@@ -52,29 +54,28 @@ export function createJoystickAdapter({
    * Return to a known home pose. Goes through executeCommand → pipeline.
    */
   function home() {
-    return executeCommand({ type: CommandTypes.HOME, payload: {}, source });
+    return executeCommand({ type: 'home', source });
   }
 
   /**
    * Soft stop — pauses motion without tripping the safety latch.
-   * For an emergency trip use `halt()`.
    */
   function stop() {
-    return executeCommand({ type: CommandTypes.STOP, payload: {}, source });
+    return executeCommand({ type: 'stop', source });
   }
 
   /**
-   * Emergency halt — trips the safety latch. Prefer stop() for routine halts.
+   * Emergency halt — trips the safety latch.
    */
   function halt() {
-    return executeCommand({ type: CommandTypes.HALT, payload: {}, source });
+    return executeCommand({ type: 'halt', source });
   }
 
   /**
    * Reset the safety latch.
    */
   function resetSafety() {
-    return executeCommand({ type: CommandTypes.RESET_SAFETY, payload: {}, source });
+    return executeCommand({ type: 'resetSafety', source });
   }
 
   return {

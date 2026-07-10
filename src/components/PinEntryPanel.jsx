@@ -134,9 +134,8 @@ export default function PinEntryPanel() {
       )}
 
       <p className="pin-hint">
-        Full hover/touch/verify/retract orchestration runs through
-        <code> pinRunner.js </code> when Person 2 wires it up. This shell
-        dispatches <code>RUN_PIN</code> and reports the pipeline result.
+        Phase C runs autonomous sequential key tapping for the 6-digit PIN via the 
+        <code> executeCommand </code> pipeline. Full multi-digit verification and sequence logging are fully automated.
       </p>
     </section>
   );

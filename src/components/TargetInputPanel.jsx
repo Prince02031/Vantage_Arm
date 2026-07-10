@@ -37,13 +37,15 @@ export default function TargetInputPanel() {
     setSubmitting(true);
     try {
       const res = await executeCommand({
-        type: CommandTypes.MOVE_TO,
-        payload: { target: { x: Number(x), y: Number(y), z: Number(z) } },
+        type: 'moveTo',
+        target: { x: Number(x), y: Number(y), z: Number(z) },
         source: 'dashboard'
       });
-      setReport(res && typeof res === 'object'
-        ? res
-        : { success: true, message: `Move To (${x}, ${y}, ${z}) dispatched.` });
+      if (res && typeof res === 'object') {
+        setReport({ success: res.ok, message: res.message });
+      } else {
+        setReport({ success: true, message: `Move To (${x}, ${y}, ${z}) dispatched.` });
+      }
     } catch (err) {
       setReport({ success: false, message: err?.message || 'Move To failed.' });
     } finally {
