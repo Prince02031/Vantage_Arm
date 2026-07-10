@@ -39,7 +39,7 @@ export default function VoicePanel() {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState(null);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
+  const [isAgentMode, setIsAgentMode] = useState(true);
   
   const recognitionRef = useRef(null);
   // submitRef always points to the latest submit closure — fixes stale closure bug
@@ -63,7 +63,7 @@ export default function VoicePanel() {
     });
 
     try {
-      const res = await parseAndExecuteVoiceCommand(phrase, executeCommand, { source: 'voice' });
+      const res = await parseAndExecuteVoiceCommand(phrase, executeCommand, { source: 'voice', isAgentMode });
       
       // Build display message: parse failure → parse msg, exec failure → exec msg, success → exec msg
       const isParsed = res.parseResult ? res.parseResult.ok : false;
@@ -161,39 +161,31 @@ export default function VoicePanel() {
         </span>
       </header>
 
-      {/* Gemini API Key input */}
-      <div className="gemini-key-row" style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.6rem', alignItems: 'center' }}>
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(e) => {
-            setApiKey(e.target.value);
-            localStorage.setItem('gemini_api_key', e.target.value);
+      {/* Mode selection buttons */}
+      <div className="mode-toggle-row" style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.6rem' }}>
+        <button
+          type="button"
+          className={`btn ${!isAgentMode ? 'btn-primary' : 'btn-secondary'}`}
+          style={{ flex: 1, fontSize: '11px', padding: '0.4rem 0.5rem', fontWeight: 600 }}
+          onClick={() => setIsAgentMode(false)}
+        >
+          Normal Mode
+        </button>
+        <button
+          type="button"
+          className={`btn ${isAgentMode ? 'btn-primary' : 'btn-secondary'}`}
+          style={{ 
+            flex: 1, 
+            fontSize: '11px', 
+            padding: '0.4rem 0.5rem', 
+            fontWeight: 600, 
+            borderColor: isAgentMode ? '#f1c40f' : undefined,
+            color: isAgentMode ? '#f1c40f' : '#8b949e'
           }}
-          placeholder="Gemini API Key (Leave empty to use local presets)"
-          style={{
-            flex: 1,
-            background: '#0d1117',
-            border: '1px solid #30363d',
-            color: '#e6edf3',
-            padding: '0.35rem 0.5rem',
-            borderRadius: '6px',
-            fontSize: '11px'
-          }}
-        />
-        {apiKey && (
-          <button
-            type="button"
-            className="btn btn-secondary"
-            style={{ fontSize: '11px', padding: '0.35rem 0.5rem', whiteSpace: 'nowrap' }}
-            onClick={() => {
-              setApiKey('');
-              localStorage.removeItem('gemini_api_key');
-            }}
-          >
-            Clear Key
-          </button>
-        )}
+          onClick={() => setIsAgentMode(true)}
+        >
+          ⭐ Agent Mode
+        </button>
       </div>
 
       {hasSpeechSupport && (

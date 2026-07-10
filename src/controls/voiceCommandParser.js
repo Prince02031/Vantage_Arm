@@ -153,7 +153,11 @@ export async function parseAndExecuteVoiceCommand(input, executeCommand, context
       return { ok: false, message: parseResult.message, parseResult };
     }
 
-    // Unrecognized by deterministic parser -> Fallback to Agentic Voice Parser
+    // Unrecognized by deterministic parser -> Fallback to Agentic Voice Parser ONLY if Agent Mode is enabled
+    if (!context.isAgentMode) {
+      return { ok: false, message: parseResult.message, parseResult };
+    }
+
     try {
       const agenticResult = await parseAgenticCommand(input, context);
       if (!agenticResult.ok) {

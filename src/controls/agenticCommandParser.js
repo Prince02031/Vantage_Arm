@@ -161,7 +161,6 @@ CRITICAL INSTRUCTIONS:
  * @returns {Promise<Object>} Parser report { ok: boolean, commands: Array, source: 'agentic-voice', mode: string }
  */
 export async function parseAgenticCommand(transcript, context = {}) {
-  const apiKey = localStorage.getItem('gemini_api_key') || import.meta.env?.VITE_GEMINI_API_KEY || '';
   const state = getRobotState();
   const currentEE = state.eePosition || { x: 0.55, y: 0.0, z: 0.10 };
   const currentJoints = state.jointAngles || {};
@@ -176,32 +175,22 @@ export async function parseAgenticCommand(transcript, context = {}) {
   if (simulated) {
     commands = simulated;
     mode = 'local-simulation';
-  } else if (!apiKey) {
-    // If no simulated matching keyword and no API key, fail with hint
-    return {
-      ok: false,
-      message: `No Gemini API key configured, and transcript did not match any local preset (e.g. "draw a triangle", "draw a square", "press keys 1 3 5").`,
-      transcript,
-      mode: 'unsupported'
-    };
   } else {
-    // 2. Query Gemini API
+    // 2. Query Backend Gemini Proxy API
     mode = 'gemini-api';
     try {
       const promptText = buildSystemPrompt(currentEE, currentJoints, keyConfig, transcript);
       
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      const url = `/api/agentic-voice`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: promptText }] }]
-        })
+        body: JSON.stringify({ prompt: promptText })
       });
 
       if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Gemini API returned status ${response.status}: ${errText}`);
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || `Proxy server returned status ${response.status}`);
       }
 
       const resData = await response.json();
@@ -223,8 +212,7 @@ export async function parseAgenticCommand(transcript, context = {}) {
         };
       }
     } catch (err) {
-      console.warn("Gemini API call failed, falling back to local presets. Error:", err.message);
-      // Fail gracefully or try local matching again with less strict rules
+      console.warn("Backend Gemini API call failed. Error:", err.message);
       return {
         ok: false,
         message: `Gemini Agent Error: ${err.message}`,
