@@ -1,0 +1,121 @@
+// robotAdapter.js
+// Null-safe adapter between URDF scene (Person 1) and motion pipeline (Person 2).
+// ALL methods return safe fallback values if the robot is not yet loaded.
+import { getEndEffectorWorldPosition } from './endEffector.js';
+import { setJointAngles as _setJointAngles, getJointAngles as _getJointAngles } from '../scene/ArmModel.jsx';
+import { flashKey as _flashKey } from '../scene/KeyPanel.jsx';
+
+/**
+ * Create a robotAdapter.
+ * Safe to call before the robot is loaded — methods return empty/zero values.
+ *
+ * @param {{
+ *   robot: object|null,
+ *   discovery: object|null,
+ *   keyMeshes: THREE.Mesh[],
+ *   targetMarker: object|null,
+ * }} ctx
+ */
+export function createRobotAdapter({ robot, discovery, keyMeshes, targetMarker }) {
+    // Lookup map: label → mesh
+    const keyMeshMap = {};
+    for (const mesh of keyMeshes ?? []) {
+        const label = mesh.userData?.label;
+        if (label) keyMeshMap[label] = mesh;
+    }
+
+    // Limits map: name → { lower, upper, effort, velocity }
+    const limitsMap = {};
+    for (const j of discovery?.joints ?? []) {
+        if (j.limits) limitsMap[j.name] = j.limits;
+    }
+
+    const adapter = {
+        // ── Info ──────────────────────────────────────────────────────────
+
+        /** Raw urdf-loader robot object, or null before load. */
+        getRobot() {
+            return robot ?? null;
+        },
+
+        /**
+         * Movable joint descriptors from joint discovery.
+         * Returns [] before robot loads.
+         */
+        getMovableJoints() {
+            return discovery?.movableJoints ?? [];
+        },
+
+        /**
+         * Per-joint limits from URDF.
+         * Returns {} if no limits parsed or robot not loaded.
+         */
+        getJointLimits() {
+            return limitsMap;
+        },
+
+        // ── Live state ────────────────────────────────────────────────────
+
+        /**
+         * Current joint angles in radians, keyed by joint name.
+         * Returns {} before robot loads.
+         */
+        getJointAngles() {
+            if (!robot) return {};
+            return _getJointAngles(robot);
+        },
+
+        // ── Setters ───────────────────────────────────────────────────────
+
+        /**
+         * Set one or more joint angles, clamped to URDF limits.
+         * No-op (returns notFound list) if robot not loaded.
+         * @param {{ [jointName: string]: number }} angles — radians
+         * @returns {{ set: string[], notFound: string[] }}
+         */
+        setJointAngles(angles) {
+            if (!robot) {
+                const notFound = Object.keys(angles ?? {});
+                console.warn('[robotAdapter] setJointAngles called before robot loaded', notFound);
+                return { set: [], notFound };
+            }
+            return _setJointAngles(robot, angles);
+        },
+
+        // ── Computed ──────────────────────────────────────────────────────
+
+        /**
+         * TCP world position in metres.
+         * Returns { x:0, y:0, z:0 } before robot loads.
+         */
+        getEndEffectorPosition() {
+            if (!robot) return { x: 0, y: 0, z: 0 };
+            return getEndEffectorWorldPosition(robot);
+        },
+
+        // ── Visual ────────────────────────────────────────────────────────
+
+        /**
+         * Move target marker to a world position.
+         * No-op if marker not ready.
+         * @param {{ x:number, y:number, z:number }} target
+         */
+        updateTargetMarker(target) {
+            if (!target || !targetMarker) return;
+            targetMarker.setPosition(target.x, target.y, target.z);
+        },
+
+        /**
+         * Flash the key box labelled `key` ("1"–"6").
+         * No-op if key not found.
+         * @param {string|number} key
+         */
+        flashKey(key) {
+            const mesh = keyMeshMap[String(key)];
+            if (mesh) _flashKey(mesh);
+            else console.warn(`[robotAdapter] flashKey: no mesh for key "${key}"`);
+        },
+    };
+
+    return adapter;
+}
